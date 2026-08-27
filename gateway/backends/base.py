@@ -19,3 +19,7 @@ class InferenceBackend(Protocol):
     async def generate_batch(self, requests: list[Any]) -> list[Any]:
         """Generate responses for a batch while preserving input order."""
         ...
+
+    async def close(self) -> None:
+        """Release resources owned by the backend."""
+        ...

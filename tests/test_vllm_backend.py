@@ -1,0 +1,231 @@
+import json
+from typing import Any
+
+import httpx2
+import pytest
+from fastapi.testclient import TestClient
+
+from gateway.app import create_app
+from gateway.backends.vllm import VLLMBackend
+from gateway.config import Settings
+from gateway.core.errors import (
+    BackendCapabilityError,
+    BackendConfigurationError,
+    BackendHTTPError,
+    BackendProtocolError,
+    BackendRequestRejectedError,
+    BackendTimeoutError,
+    BackendUnavailableError,
+)
+from gateway.schemas.chat import ChatCompletionRequest
+
+UPSTREAM_RESPONSE = {
+    "id": "chatcmpl-upstream",
+    "object": "chat.completion",
+    "created": 123,
+    "model": "served-model",
+    "choices": [
+        {
+            "index": 0,
+            "message": {"role": "assistant", "content": "Hello"},
+            "finish_reason": "stop",
+        }
+    ],
+    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    "vllm_extension": {"preserved": True},
+}
+
+
+def chat_request(**overrides: Any) -> ChatCompletionRequest:
+    payload: dict[str, Any] = {
+        "model": "served-model",
+        "messages": [{"role": "user", "content": "Hello"}],
+        **overrides,
+    }
+    return ChatCompletionRequest.model_validate(payload)
+
+
+def make_backend(
+    handler: Any,
+    **settings_overrides: Any,
+) -> VLLMBackend:
+    settings = Settings(
+        _env_file=None,
+        vllm_base_url="https://vllm.example.test/root/",
+        **settings_overrides,
+    )
+    return VLLMBackend(settings, transport=httpx2.MockTransport(handler))
+
+
+@pytest.mark.asyncio
+async def test_generate_forwards_url_headers_and_exact_payload() -> None:
+    captured: dict[str, Any] = {}
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["content_type"] = request.headers["Content-Type"]
+        captured["authorization"] = request.headers["Authorization"]
+        captured["payload"] = json.loads(request.content)
+        captured["timeout"] = request.extensions["timeout"]
+        return httpx2.Response(200, json=UPSTREAM_RESPONSE)
+
+    backend = make_backend(
+        handler,
+        vllm_api_key="backend-secret",
+        vllm_connect_timeout_seconds=2.5,
+        vllm_request_timeout_seconds=9.0,
+    )
+    request = chat_request(
+        max_tokens=32,
+        temperature=0.4,
+        top_p=0.8,
+        stop=["done"],
+        seed=7,
+        n=2,
+        stream=False,
+    )
+
+    try:
+        response = await backend.generate(request)
+    finally:
+        await backend.close()
+
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://vllm.example.test/root/v1/chat/completions"
+    assert captured["content_type"] == "application/json"
+    assert captured["authorization"] == "Bearer backend-secret"
+    assert captured["payload"] == {
+        "model": "served-model",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "temperature": 0.4,
+        "top_p": 0.8,
+        "max_tokens": 32,
+        "stop": ["done"],
+        "seed": 7,
+        "n": 2,
+        "stream": False,
+    }
+    assert captured["timeout"] == {
+        "connect": 2.5,
+        "read": 9.0,
+        "write": 9.0,
+        "pool": 9.0,
+    }
+    assert response == UPSTREAM_RESPONSE
+
+
+@pytest.mark.asyncio
+async def test_generate_omits_authorization_when_key_is_unconfigured() -> None:
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        assert "Authorization" not in request.headers
+        return httpx2.Response(200, json=UPSTREAM_RESPONSE)
+
+    backend = make_backend(handler)
+    try:
+        await backend.generate(chat_request())
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize(
+    "exception_type,expected_error",
+    [
+        (httpx2.ConnectError, BackendUnavailableError),
+        (httpx2.ReadTimeout, BackendTimeoutError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_transport_failures_are_mapped(
+    exception_type: type[httpx2.RequestError],
+    expected_error: type[Exception],
+) -> None:
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        raise exception_type("transport failed", request=request)
+
+    backend = make_backend(handler)
+    try:
+        with pytest.raises(expected_error):
+            await backend.generate(chat_request())
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize("status_code", [400, 404, 422])
+@pytest.mark.asyncio
+async def test_safe_upstream_client_errors_preserve_status(status_code: int) -> None:
+    backend = make_backend(lambda _request: httpx2.Response(status_code, json={"error": "detail"}))
+    try:
+        with pytest.raises(BackendRequestRejectedError) as caught:
+            await backend.generate(chat_request())
+    finally:
+        await backend.close()
+
+    assert caught.value.status_code == status_code
+    assert caught.value.message == "Inference backend rejected the request"
+
+
+@pytest.mark.parametrize("status_code", [401, 403])
+@pytest.mark.asyncio
+async def test_upstream_authentication_errors_are_gateway_failures(status_code: int) -> None:
+    backend = make_backend(lambda _request: httpx2.Response(status_code))
+    try:
+        with pytest.raises(BackendConfigurationError):
+            await backend.generate(chat_request())
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize("status_code", [429, 500, 503])
+@pytest.mark.asyncio
+async def test_other_upstream_errors_map_to_safe_bad_gateway(status_code: int) -> None:
+    backend = make_backend(lambda _request: httpx2.Response(status_code))
+    try:
+        with pytest.raises(BackendHTTPError) as caught:
+            await backend.generate(chat_request())
+    finally:
+        await backend.close()
+
+    assert caught.value.status_code == 502
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx2.Response(200, content=b"not json", headers={"Content-Type": "text/plain"}),
+        httpx2.Response(200, json=["not", "an", "object"]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_invalid_success_response_maps_to_protocol_error(
+    response: httpx2.Response,
+) -> None:
+    backend = make_backend(lambda _request: response)
+    try:
+        with pytest.raises(BackendProtocolError):
+            await backend.generate(chat_request())
+    finally:
+        await backend.close()
+
+
+@pytest.mark.asyncio
+async def test_unsupported_backend_capabilities_fail_explicitly() -> None:
+    backend = make_backend(lambda _request: httpx2.Response(200, json=UPSTREAM_RESPONSE))
+    try:
+        with pytest.raises(BackendCapabilityError):
+            await backend.generate_batch([chat_request()])
+        with pytest.raises(BackendCapabilityError):
+            async for _chunk in backend.stream(chat_request()):
+                pass
+    finally:
+        await backend.close()
+
+
+def test_application_lifespan_closes_vllm_client() -> None:
+    backend = make_backend(lambda _request: httpx2.Response(200, json=UPSTREAM_RESPONSE))
+    app = create_app(Settings(_env_file=None), backend=backend)
+
+    with TestClient(app):
+        assert backend.is_closed is False
+
+    assert backend.is_closed is True

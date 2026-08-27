@@ -2,6 +2,7 @@ import pytest
 
 from gateway.backends.base import InferenceBackend
 from gateway.backends.fake import FakeBackend
+from gateway.schemas.chat import ChatCompletionRequest
 
 
 @pytest.mark.asyncio
@@ -34,3 +35,30 @@ async def test_generate_batch_preserves_order() -> None:
         {"input": "one", "output": "fake:one"},
         {"input": "two", "output": "fake:two"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_generate_chat_completion_shape() -> None:
+    backend = FakeBackend()
+    request = ChatCompletionRequest(
+        model="test-model",
+        messages=[{"role": "user", "content": "Hello"}],
+    )
+
+    response = await backend.generate(request)
+
+    assert response["object"] == "chat.completion"
+    assert response["model"] == "test-model"
+    assert response["choices"][0]["message"] == {
+        "role": "assistant",
+        "content": "fake response",
+    }
+
+
+@pytest.mark.asyncio
+async def test_close_marks_backend_closed() -> None:
+    backend = FakeBackend()
+
+    await backend.close()
+
+    assert backend.closed is True
