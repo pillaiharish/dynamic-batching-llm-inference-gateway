@@ -2,8 +2,10 @@
 
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, TypeAdapter, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_http_url_adapter = TypeAdapter(AnyHttpUrl)
 
 
 class Settings(BaseSettings):
@@ -22,6 +24,12 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", min_length=1)
     port: int = Field(default=8080, ge=1, le=65535)
     request_id_header: str = Field(default="X-Request-ID", min_length=1)
+    vllm_base_url: str = "http://localhost:8000"
+    vllm_api_key: SecretStr | None = None
+    vllm_connect_timeout_seconds: float = Field(default=5.0, gt=0)
+    vllm_request_timeout_seconds: float = Field(default=120.0, gt=0)
+    max_completion_tokens: int = Field(default=4096, gt=0)
+    max_choices: int = Field(default=4, gt=0)
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -39,4 +47,19 @@ class Settings(BaseSettings):
             for character in value
         ):
             raise ValueError("must be a valid HTTP header name")
+        return value
+
+    @field_validator("vllm_base_url")
+    @classmethod
+    def validate_vllm_base_url(cls, value: str) -> str:
+        """Validate an HTTP URL and normalize trailing slashes."""
+        validated_url = _http_url_adapter.validate_python(value)
+        return str(validated_url).rstrip("/")
+
+    @field_validator("vllm_api_key", mode="before")
+    @classmethod
+    def normalize_empty_vllm_api_key(cls, value: object) -> object:
+        """Treat an empty environment value as an unconfigured API key."""
+        if isinstance(value, str) and not value.strip():
+            return None
         return value

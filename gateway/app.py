@@ -7,27 +7,38 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from gateway import __version__
+from gateway.api.chat import router as chat_router
 from gateway.api.health import router as health_router
+from gateway.backends.base import InferenceBackend
+from gateway.backends.vllm import VLLMBackend
 from gateway.config import Settings
 from gateway.core.errors import register_exception_handlers
 from gateway.core.logging import configure_logging
 from gateway.core.request_id import install_request_id_middleware
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    backend: InferenceBackend | None = None,
+) -> FastAPI:
     """Build and configure an isolated gateway application instance."""
     app_settings = settings or Settings()
     configure_logging(app_settings.log_level)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        active_backend = backend if backend is not None else VLLMBackend(app_settings)
+        app.state.backend = active_backend
         app.state.ready = True
         try:
             yield
         finally:
             app.state.ready = False
+            await active_backend.close()
 
-    application = FastAPI(title=app_settings.app_name, version="0.1.0", lifespan=lifespan)
+    application = FastAPI(title=app_settings.app_name, version=__version__, lifespan=lifespan)
     application.state.settings = app_settings
     application.state.ready = False
 
@@ -37,6 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     register_exception_handlers(application)
     application.include_router(health_router)
+    application.include_router(chat_router)
     return application
 
 

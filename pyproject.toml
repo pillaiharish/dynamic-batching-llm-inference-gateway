@@ -4,20 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynamic-batching-llm-inference-gateway"
-version = "0.1.0"
-description = "Foundation for a multi-tenant LLM inference gateway"
+description = "OpenAI-compatible FastAPI gateway for non-streaming vLLM inference"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
+dynamic = ["version"]
 dependencies = [
     "fastapi>=0.115,<1.0",
+    "httpx2>=2.0,<3.0",
     "pydantic-settings>=2.6,<3.0",
     "uvicorn[standard]>=0.32,<1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "httpx2>=2.0,<3.0",
     "pytest>=8.3,<9.0",
     "pytest-asyncio>=1.0,<2.0",
     "ruff>=0.8,<1.0",
@@ -25,6 +25,9 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["gateway*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "gateway.__version__" }
 
 [tool.pytest.ini_options]
 addopts = "-ra"
