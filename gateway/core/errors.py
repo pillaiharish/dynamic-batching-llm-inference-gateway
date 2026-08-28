@@ -18,6 +18,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _record_error_metric(request: Request, code: str) -> None:
+    metrics = getattr(request.app.state, "metrics", None)
+    if metrics is not None:
+        metrics.record_error(code)
+
+
 class GatewayError(Exception):
     """Base class for expected gateway failures safe to expose to clients."""
 
@@ -206,6 +212,7 @@ def _error_response(
 
 async def gateway_error_handler(request: Request, exc: GatewayError) -> JSONResponse:
     """Return the stable client representation for an expected gateway error."""
+    _record_error_metric(request, exc.code)
     request_id = _request_id_from(request)
     logger.warning(
         "gateway request failed",
@@ -224,6 +231,7 @@ async def request_validation_error_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Normalize malformed JSON and schema failures without exposing internals."""
+    _record_error_metric(request, "invalid_request")
     logger.info(
         "request validation failed",
         extra={"error_code": "invalid_request", "request_id": _request_id_from(request)},
@@ -238,6 +246,7 @@ async def request_validation_error_handler(
 
 async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """Log unexpected exceptions while returning a non-sensitive response."""
+    _record_error_metric(request, "internal_error")
     request_id = _request_id_from(request)
     logger.exception(
         "unexpected gateway error",

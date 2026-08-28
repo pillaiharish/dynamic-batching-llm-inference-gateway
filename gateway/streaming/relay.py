@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Literal
 
 from starlette.requests import ClientDisconnect
@@ -13,6 +13,7 @@ from starlette.types import Receive, Scope, Send
 
 from gateway.admission.controller import AdmissionLease
 from gateway.backends.base import BackendStream
+from gateway.observability.sse import SSEMetricsObserver
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +30,15 @@ class StreamingRelay:
         *,
         tenant_id: str,
         request_id: str | None,
+        metrics_observer: SSEMetricsObserver | None = None,
+        on_outcome: Callable[[StreamOutcome], None] | None = None,
     ) -> None:
         self._backend_stream = backend_stream
         self._lease = lease
         self._tenant_id = tenant_id
         self._request_id = request_id
+        self._metrics_observer = metrics_observer
+        self._on_outcome = on_outcome
         self._close_lock = asyncio.Lock()
         self._closed = False
 
@@ -43,6 +48,11 @@ class StreamingRelay:
     async def _iterate(self) -> AsyncIterator[bytes]:
         try:
             async for chunk in self._backend_stream:
+                if self._metrics_observer is not None:
+                    try:
+                        self._metrics_observer.observe_bytes(chunk)
+                    except Exception:
+                        logger.warning("metrics_event_parse_error")
                 yield chunk
         except asyncio.CancelledError:
             await self.aclose("cancelled")
@@ -82,6 +92,17 @@ class StreamingRelay:
                 )
             finally:
                 await self._lease.release()
+
+            if self._metrics_observer is not None:
+                try:
+                    self._metrics_observer.finalize()
+                except Exception:
+                    logger.warning("metrics_event_parse_error")
+            if self._on_outcome is not None:
+                try:
+                    self._on_outcome(final_outcome)
+                except Exception:
+                    logger.warning("metrics_update_error", exc_info=True)
 
             logger.info(
                 "stream relay finished",

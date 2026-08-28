@@ -8,6 +8,9 @@ from typing import Any, Protocol, runtime_checkable
 class BackendStream(Protocol):
     """An opened incremental backend response with explicit cleanup."""
 
+    backend_id: str | None
+    upstream_request_started_at: float | None
+
     def __aiter__(self) -> AsyncIterator[bytes]:
         """Yield response bytes without imposing event boundaries."""
         ...

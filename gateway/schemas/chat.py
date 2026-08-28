@@ -1,8 +1,10 @@
 """Supported subset of the OpenAI Chat Completions request contract."""
 
+from __future__ import annotations
+
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ChatMessage(BaseModel):
@@ -21,6 +23,14 @@ class ChatMessage(BaseModel):
         return value
 
 
+class StreamOptions(BaseModel):
+    """Minimal OpenAI-compatible streaming usage request options."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    include_usage: bool = False
+
+
 class ChatCompletionRequest(BaseModel):
     """The explicitly supported Chat Completions request fields."""
 
@@ -35,6 +45,7 @@ class ChatCompletionRequest(BaseModel):
     seed: int | None = None
     n: int = Field(default=1, gt=0)
     stream: bool = False
+    stream_options: StreamOptions | None = None
 
     @field_validator("model")
     @classmethod
@@ -52,6 +63,13 @@ class ChatCompletionRequest(BaseModel):
         if not values or any(not item.strip() for item in values):
             raise ValueError("stop values must be non-empty strings")
         return value
+
+    @model_validator(mode="after")
+    def validate_stream_options(self) -> ChatCompletionRequest:
+        """Allow stream options only for a streaming request."""
+        if self.stream_options is not None and not self.stream:
+            raise ValueError("stream_options is allowed only when stream=true")
+        return self
 
     def to_upstream_payload(self) -> dict[str, object]:
         """Serialize only fields supplied by the client and required contract fields."""

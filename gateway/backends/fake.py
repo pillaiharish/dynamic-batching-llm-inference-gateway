@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any
 
 from gateway.backends.base import BackendStream
@@ -13,6 +14,8 @@ class FakeBackendStream:
     """Small byte stream used for deterministic gateway tests."""
 
     chunks: tuple[bytes, ...]
+    backend_id: str | None = "fake"
+    upstream_request_started_at: float | None = None
     closed: bool = False
 
     def __aiter__(self) -> AsyncIterator[bytes]:
@@ -68,7 +71,10 @@ class FakeBackend:
         return {"input": request, "output": f"{self.prefix}:{request}"}
 
     async def stream(self, _request: Any) -> BackendStream:
-        self.last_stream = FakeBackendStream(self.stream_chunks)
+        self.last_stream = FakeBackendStream(
+            self.stream_chunks,
+            upstream_request_started_at=perf_counter(),
+        )
         return self.last_stream
 
     async def generate_batch(self, requests: list[Any]) -> list[dict[str, Any]]:

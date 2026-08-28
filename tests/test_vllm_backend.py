@@ -108,7 +108,9 @@ def make_backend(
     vllm_connect_timeout_seconds: float = 5.0,
     vllm_request_timeout_seconds: float = 120.0,
     backend_health_timeout_seconds: float = 2.0,
+    clock: Any | None = None,
 ) -> VLLMBackend:
+    clock_options = {} if clock is None else {"clock": clock}
     return VLLMBackend(
         backend_id,
         BackendConfig(base_url=base_url, api_key=api_key),
@@ -116,6 +118,7 @@ def make_backend(
         request_timeout_seconds=vllm_request_timeout_seconds,
         health_timeout_seconds=backend_health_timeout_seconds,
         transport=httpx2.MockTransport(handler),
+        **clock_options,
     )
 
 
@@ -310,6 +313,29 @@ async def test_stream_opens_unbuffered_request_and_relays_exact_bytes() -> None:
     assert chunks == list(SSE_CHUNKS)
     assert b"".join(chunks).count(b"data: [DONE]\n\n") == 1
     assert response_body.closed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_forwards_usage_options_and_captures_upstream_start() -> None:
+    captured: dict[str, Any] = {}
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        captured["payload"] = json.loads(request.content)
+        return httpx2.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            stream=TrackingByteStream(),
+        )
+
+    backend = make_backend(handler, backend_id="gpu-a", clock=lambda: 42.5)
+    stream = await backend.stream(chat_request(stream=True, stream_options={"include_usage": True}))
+    try:
+        assert stream.backend_id == "gpu-a"
+        assert stream.upstream_request_started_at == 42.5
+        assert captured["payload"]["stream_options"] == {"include_usage": True}
+    finally:
+        await stream.aclose()
+        await backend.close()
 
 
 @pytest.mark.asyncio

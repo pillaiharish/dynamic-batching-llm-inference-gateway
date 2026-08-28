@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Callable
+from time import perf_counter
 from typing import Any
 
 import httpx2
@@ -31,9 +32,14 @@ class _VLLMBackendStream:
         self,
         response: httpx2.Response,
         on_close: Callable[[_VLLMBackendStream], None],
+        *,
+        backend_id: str,
+        upstream_request_started_at: float,
     ) -> None:
         self._response = response
         self._on_close = on_close
+        self.backend_id = backend_id
+        self.upstream_request_started_at = upstream_request_started_at
         self._closed = False
 
     def __aiter__(self) -> AsyncIterator[bytes]:
@@ -74,6 +80,7 @@ class VLLMBackend:
         request_timeout_seconds: float,
         health_timeout_seconds: float,
         transport: httpx2.AsyncBaseTransport | None = None,
+        clock: Callable[[], float] = perf_counter,
     ) -> None:
         headers = {"Content-Type": "application/json"}
         if config.api_key is not None:
@@ -86,6 +93,7 @@ class VLLMBackend:
             connect=connect_timeout_seconds,
         )
         self.backend_id = backend_id
+        self._clock = clock
         self._health_timeout_seconds = health_timeout_seconds
         self._client = httpx2.AsyncClient(
             base_url=config.base_url,
@@ -140,6 +148,7 @@ class VLLMBackend:
             json=request.to_upstream_payload(),
             headers={"Accept": "text/event-stream"},
         )
+        upstream_request_started_at = self._clock()
         try:
             response = await self._client.send(upstream_request, stream=True)
         except httpx2.TimeoutException as exc:
@@ -170,7 +179,12 @@ class VLLMBackend:
             await response.aclose()
             raise BackendProtocolError()
 
-        stream = _VLLMBackendStream(response, self._active_streams.discard)
+        stream = _VLLMBackendStream(
+            response,
+            self._active_streams.discard,
+            backend_id=self.backend_id,
+            upstream_request_started_at=upstream_request_started_at,
+        )
         self._active_streams.add(stream)
         return stream
 

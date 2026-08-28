@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import deque
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from time import perf_counter
+from typing import Literal, Protocol
 
 from gateway.admission.models import AdmissionSnapshot, TenantAdmissionSnapshot
 from gateway.auth.tenants import TenantContext
@@ -16,6 +19,27 @@ from gateway.core.errors import (
     GatewayQueueFullError,
     TenantQueueFullError,
 )
+
+logger = logging.getLogger(__name__)
+
+AdmissionWaitOutcome = Literal["admitted", "timeout", "rejected", "cancelled"]
+
+
+class AdmissionObserver(Protocol):
+    """Synchronous, non-authoritative observation of admission transitions."""
+
+    def admission_wait_observed(
+        self,
+        duration_seconds: float,
+        outcome: AdmissionWaitOutcome,
+    ) -> None: ...
+
+    def admission_state_changed(
+        self,
+        global_inflight: int,
+        global_queued: int,
+        tenants: Mapping[str, tuple[int, int]],
+    ) -> None: ...
 
 
 @dataclass(slots=True)
@@ -65,6 +89,8 @@ class AdmissionController:
         global_max_inflight: int,
         global_max_queue: int,
         queue_timeout_seconds: float,
+        observer: AdmissionObserver | None = None,
+        clock: Callable[[], float] = perf_counter,
     ) -> None:
         configured_tenants = tuple(tenants)
         if global_max_inflight <= 0 or global_max_queue < 0 or queue_timeout_seconds <= 0:
@@ -83,9 +109,34 @@ class AdmissionController:
         self._active_tenant_ids: set[str] = set()
         self._lock = asyncio.Lock()
         self._closed = False
+        self._observer = observer
+        self._clock = clock
+        self._notify_observer()
+
+    def set_observer(self, observer: AdmissionObserver | None) -> None:
+        """Attach an optional observer and immediately publish current state."""
+        self._observer = observer
+        self._notify_observer()
 
     async def acquire(self, tenant: TenantContext) -> AdmissionLease:
         """Acquire immediately or join a bounded queue until admitted or timed out."""
+        started_at = self._clock()
+        try:
+            lease = await self._acquire(tenant)
+        except AdmissionTimeoutError:
+            self._observe_wait(started_at, "timeout")
+            raise
+        except (AdmissionUnavailableError, GatewayQueueFullError, TenantQueueFullError):
+            self._observe_wait(started_at, "rejected")
+            raise
+        except asyncio.CancelledError:
+            self._observe_wait(started_at, "cancelled")
+            raise
+        else:
+            self._observe_wait(started_at, "admitted")
+            return lease
+
+    async def _acquire(self, tenant: TenantContext) -> AdmissionLease:
         async with self._lock:
             if self._closed:
                 raise AdmissionUnavailableError()
@@ -103,6 +154,7 @@ class AdmissionController:
             state.queue.append(waiter)
             self._global_queued += 1
             self._activate_tenant_locked(state.tenant.tenant_id)
+            self._notify_observer()
             self._dispatch_locked()
 
         try:
@@ -168,6 +220,7 @@ class AdmissionController:
             self._active_tenant_ids.clear()
             if self._global_queued != 0:
                 raise RuntimeError("admission queue accounting became inconsistent")
+            self._notify_observer()
 
     async def _release(self, lease: AdmissionLease) -> None:
         async with self._lock:
@@ -183,6 +236,7 @@ class AdmissionController:
         lease._released = True
         state.inflight -= 1
         self._global_inflight -= 1
+        self._notify_observer()
 
     def _dispatch_locked(self) -> None:
         if self._closed:
@@ -213,9 +267,13 @@ class AdmissionController:
                 break
 
     def _discard_completed_waiters_locked(self, state: _TenantState) -> None:
+        discarded = False
         while state.queue and state.queue[0].future.done():
             state.queue.popleft()
             self._global_queued -= 1
+            discarded = True
+        if discarded:
+            self._notify_observer()
 
     def _remove_waiter_locked(self, state: _TenantState, waiter: _Waiter) -> bool:
         try:
@@ -225,6 +283,7 @@ class AdmissionController:
         self._global_queued -= 1
         if not state.queue:
             self._deactivate_tenant_locked(state.tenant.tenant_id)
+        self._notify_observer()
         return True
 
     def _grant_locked(self, state: _TenantState, *, was_queued: bool) -> AdmissionLease:
@@ -232,11 +291,13 @@ class AdmissionController:
             raise RuntimeError("attempted to grant admission without capacity")
         state.inflight += 1
         self._global_inflight += 1
-        return AdmissionLease(
+        lease = AdmissionLease(
             self,
             state.tenant.tenant_id,
             was_queued=was_queued,
         )
+        self._notify_observer()
+        return lease
 
     def _can_admit(self, state: _TenantState) -> bool:
         return (
@@ -260,3 +321,29 @@ class AdmissionController:
             return self._tenants[tenant.tenant_id]
         except KeyError as exc:
             raise AdmissionUnavailableError() from exc
+
+    def _observe_wait(self, started_at: float, outcome: AdmissionWaitOutcome) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer.admission_wait_observed(
+                max(0.0, self._clock() - started_at),
+                outcome,
+            )
+        except Exception:
+            logger.warning("admission_observer_error", exc_info=True)
+
+    def _notify_observer(self) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer.admission_state_changed(
+                self._global_inflight,
+                self._global_queued,
+                {
+                    tenant_id: (state.inflight, len(state.queue))
+                    for tenant_id, state in self._tenants.items()
+                },
+            )
+        except Exception:
+            logger.warning("admission_observer_error", exc_info=True)
