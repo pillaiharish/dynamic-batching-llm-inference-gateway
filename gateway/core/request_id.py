@@ -43,6 +43,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             response.headers[self.header_name] = request_id
             duration_ms = round((perf_counter() - started_at) * 1000, 3)
+            tenant = getattr(request.state, "tenant", None)
             logger.info(
                 "request completed",
                 extra={
@@ -50,6 +51,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
                     "path": request.url.path,
                     "status_code": response.status_code,
                     "duration_ms": duration_ms,
+                    "tenant_id": getattr(tenant, "tenant_id", None),
+                    "admission_result": getattr(
+                        request.state,
+                        "admission_result",
+                        None,
+                    ),
                 },
             )
             return response

@@ -24,6 +24,7 @@ class GatewayError(Exception):
     code = "gateway_error"
     default_message = "Gateway request failed"
     status_code = 500
+    response_headers: dict[str, str] = {}
 
     def __init__(
         self,
@@ -116,6 +117,47 @@ class BackendCapabilityError(BackendError):
     status_code = 501
 
 
+class UnauthorizedError(GatewayError):
+    """Raised when tenant bearer credentials are absent or invalid."""
+
+    code = "unauthorized"
+    default_message = "Invalid or missing tenant credentials"
+    status_code = 401
+    response_headers = {"WWW-Authenticate": "Bearer"}
+
+
+class TenantQueueFullError(GatewayError):
+    """Raised when one tenant has filled its bounded waiting queue."""
+
+    code = "tenant_queue_full"
+    default_message = "Tenant admission queue is full"
+    status_code = 429
+
+
+class GatewayQueueFullError(GatewayError):
+    """Raised when the process-wide waiting queue bound is reached."""
+
+    code = "gateway_queue_full"
+    default_message = "Gateway admission queue is full"
+    status_code = 429
+
+
+class AdmissionTimeoutError(GatewayError):
+    """Raised when a queued request exceeds its bounded wait time."""
+
+    code = "admission_timeout"
+    default_message = "Timed out waiting for inference admission"
+    status_code = 429
+
+
+class AdmissionUnavailableError(GatewayError):
+    """Raised when admission has stopped during application shutdown."""
+
+    code = "admission_unavailable"
+    default_message = "Inference admission is unavailable"
+    status_code = 503
+
+
 def _request_id_from(request: Request) -> str | None:
     return get_request_id() or getattr(request.state, "request_id", None)
 
@@ -142,12 +184,15 @@ def _error_response(
     status_code: int,
     code: str,
     message: str,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     request_id = _request_id_from(request)
+    response_headers = _error_headers(request, request_id)
+    response_headers.update(headers or {})
     return JSONResponse(
         status_code=status_code,
         content=_error_payload(code=code, message=message, request_id=request_id),
-        headers=_error_headers(request, request_id),
+        headers=response_headers,
     )
 
 
@@ -163,6 +208,7 @@ async def gateway_error_handler(request: Request, exc: GatewayError) -> JSONResp
         status_code=exc.status_code,
         code=exc.code,
         message=exc.message,
+        headers=exc.response_headers,
     )
 
 

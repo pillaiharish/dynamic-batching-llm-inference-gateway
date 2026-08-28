@@ -1,10 +1,12 @@
 """OpenAI-compatible Chat Completions endpoint."""
 
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
+from gateway.admission.controller import AdmissionController
+from gateway.auth.tenants import TenantContext, authenticate_tenant
 from gateway.backends.base import InferenceBackend
 from gateway.config import Settings
 from gateway.core.errors import InvalidRequestError
@@ -24,10 +26,14 @@ def _enforce_configured_limits(payload: ChatCompletionRequest, settings: Setting
 async def create_chat_completion(
     payload: ChatCompletionRequest,
     request: Request,
+    tenant: Annotated[TenantContext, Depends(authenticate_tenant)],
 ) -> JSONResponse:
     """Validate and forward one non-streaming chat completion request."""
     settings = cast(Settings, request.app.state.settings)
     backend = cast(InferenceBackend, request.app.state.backend)
+    admission = cast(AdmissionController, request.app.state.admission_controller)
     _enforce_configured_limits(payload, settings)
-    response = cast(dict[str, Any], await backend.generate(payload))
+    async with admission.admit(tenant) as lease:
+        request.state.admission_result = "queued" if lease.was_queued else "admitted"
+        response = cast(dict[str, Any], await backend.generate(payload))
     return JSONResponse(content=response)
