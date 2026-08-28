@@ -4,14 +4,17 @@ from typing import Any
 
 import pytest
 
-from gateway.backends.base import BackendStream
+from gateway.backends.base import BackendBatchResult, BackendStream
+from gateway.batching.dynamic import DynamicBatcher
 from gateway.core.errors import (
     BackendRequestRejectedError,
     BackendTimeoutError,
     BackendUnavailableError,
     NoHealthyBackendError,
 )
+from gateway.observability.metrics import GatewayMetrics
 from gateway.routing.pool import BackendPool
+from gateway.schemas.chat import ChatCompletionRequest
 
 DONE = b"data: [DONE]\n\n"
 
@@ -129,6 +132,39 @@ class ControlledBackend:
         self.closed = True
 
 
+class ControlledBatchRoutingBackend(ControlledBackend):
+    def __init__(
+        self,
+        backend_id: str,
+        *,
+        block_batch: bool = False,
+        batch_error: Exception | None = None,
+    ) -> None:
+        super().__init__(backend_id)
+        self.batch_calls: list[list[Any]] = []
+        self.batch_started = asyncio.Event()
+        self.release_batch = asyncio.Event()
+        if not block_batch:
+            self.release_batch.set()
+        self.batch_error = batch_error
+
+    async def generate_batch(self, requests: list[Any]) -> BackendBatchResult:
+        self.batch_calls.append(requests)
+        self.batch_started.set()
+        await self.release_batch.wait()
+        if self.batch_error is not None:
+            raise self.batch_error
+        return BackendBatchResult(
+            responses=[{"request": request} for request in requests],
+            aggregate_completion_tokens=None,
+            usage_result="missing",
+        )
+
+    async def close(self) -> None:
+        self.release_batch.set()
+        await super().close()
+
+
 def make_pool(
     *backends: ControlledBackend,
     health_interval_seconds: float = 60,
@@ -172,6 +208,93 @@ async def test_health_probes_run_concurrently_and_never_consume_inflight() -> No
     backend_a.release_probe.set()
     backend_b.release_probe.set()
     await probe
+    await pool.close()
+
+
+@pytest.mark.asyncio
+async def test_batch_assignment_uses_logical_weight_and_one_operation_metric() -> None:
+    metrics = GatewayMetrics()
+    backend_a = ControlledBatchRoutingBackend("A", block_batch=True)
+    backend_b = ControlledBatchRoutingBackend("B")
+    pool = BackendPool(
+        {"A": backend_a, "B": backend_b},
+        health_interval_seconds=60,
+        health_timeout_seconds=1,
+        observer=metrics,
+    )
+    await pool.probe_once()
+
+    batch_task = asyncio.create_task(pool.generate_batch(["a", "b", "c", "d"]))
+    await asyncio.wait_for(backend_a.batch_started.wait(), timeout=1)
+    snapshot = await pool.snapshot()
+    assert snapshot.backends["A"].inflight == 4
+    assert snapshot.backends["B"].inflight == 0
+    assert metrics.registry.get_sample_value("gateway_backend_inflight", {"backend_id": "A"}) == 4
+
+    routed_direct = await pool.generate("next")
+    assert routed_direct["backend_id"] == "B"
+    assert backend_b.generate_calls == ["next"]
+
+    backend_a.release_batch.set()
+    await batch_task
+    snapshot = await pool.snapshot()
+    assert snapshot.backends["A"].inflight == 0
+    assert (
+        metrics.registry.get_sample_value(
+            "gateway_backend_requests_total",
+            {"backend_id": "A", "operation": "batch", "outcome": "success"},
+        )
+        == 1
+    )
+    await pool.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_dispatched_member_keeps_original_pool_weight_until_finish() -> None:
+    backend = ControlledBatchRoutingBackend("A", block_batch=True)
+    pool = make_pool(backend)
+    await pool.probe_once()
+    batcher = DynamicBatcher(pool, max_size=3, max_wait_seconds=0.5)
+    requests = [
+        ChatCompletionRequest.model_validate(
+            {
+                "model": "model-a",
+                "messages": [{"role": "user", "content": value}],
+            }
+        )
+        for value in ("a", "b", "c")
+    ]
+    tasks = [asyncio.create_task(batcher.submit("tenant-a", request)) for request in requests]
+    await asyncio.wait_for(backend.batch_started.wait(), timeout=1)
+    assert (await pool.snapshot()).backends["A"].inflight == 3
+
+    tasks[1].cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await tasks[1]
+    assert (await pool.snapshot()).backends["A"].inflight == 3
+
+    backend.release_batch.set()
+    await asyncio.gather(tasks[0], tasks[2])
+    assert (await pool.snapshot()).backends["A"].inflight == 0
+    await batcher.shutdown()
+    await pool.close()
+
+
+@pytest.mark.asyncio
+async def test_batch_failure_marks_selected_backend_unhealthy_without_replay() -> None:
+    backend_a = ControlledBatchRoutingBackend("A", batch_error=BackendUnavailableError())
+    backend_b = ControlledBatchRoutingBackend("B")
+    pool = make_pool(backend_a, backend_b)
+    await pool.probe_once()
+
+    with pytest.raises(BackendUnavailableError):
+        await pool.generate_batch(["a", "b", "c"])
+
+    snapshot = await pool.snapshot()
+    assert snapshot.backends["A"].healthy is False
+    assert snapshot.backends["A"].inflight == 0
+    assert len(backend_a.batch_calls) == 1
+    assert backend_b.batch_calls == []
     await pool.close()
 
 

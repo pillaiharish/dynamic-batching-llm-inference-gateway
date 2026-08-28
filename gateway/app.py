@@ -16,6 +16,7 @@ from gateway.api.metrics import router as metrics_router
 from gateway.auth.tenants import TenantRegistry
 from gateway.backends.base import InferenceBackend
 from gateway.backends.vllm import VLLMBackend
+from gateway.batching.dynamic import DynamicBatcher
 from gateway.config import Settings
 from gateway.core.errors import register_exception_handlers
 from gateway.core.logging import configure_logging
@@ -31,6 +32,7 @@ def create_app(
     backend: InferenceBackend | None = None,
     tenant_registry: TenantRegistry | None = None,
     admission_controller: AdmissionController | None = None,
+    dynamic_batcher: DynamicBatcher | None = None,
     metrics: GatewayMetrics | None = None,
     clock: Callable[[], float] = perf_counter,
 ) -> FastAPI:
@@ -85,10 +87,20 @@ def create_app(
         active_pool = active_backend if isinstance(active_backend, BackendPool) else None
         if active_pool is not None:
             active_pool.set_observer(active_metrics)
+        active_batcher = None
+        if app_settings.dynamic_batching_enabled:
+            active_batcher = dynamic_batcher or DynamicBatcher(
+                active_backend,
+                max_size=app_settings.dynamic_batch_max_size,
+                max_wait_seconds=app_settings.dynamic_batch_max_wait_seconds,
+                observer=active_metrics,
+                clock=clock,
+            )
         app.state.tenant_registry = active_registry
         app.state.admission_controller = active_admission
         app.state.backend = active_backend
         app.state.backend_pool = active_pool
+        app.state.dynamic_batcher = active_batcher
         try:
             if active_pool is not None:
                 await active_pool.start()
@@ -99,7 +111,11 @@ def create_app(
             try:
                 await active_admission.shutdown()
             finally:
-                await active_backend.close()
+                try:
+                    if active_batcher is not None:
+                        await active_batcher.shutdown()
+                finally:
+                    await active_backend.close()
 
     application = FastAPI(title=app_settings.app_name, version=__version__, lifespan=lifespan)
     application.state.settings = app_settings
@@ -107,6 +123,7 @@ def create_app(
     application.state.metrics_clock = clock
     application.state.ready = False
     application.state.backend_pool = None
+    application.state.dynamic_batcher = None
 
     install_request_id_middleware(
         application,

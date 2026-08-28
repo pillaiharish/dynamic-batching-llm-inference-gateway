@@ -74,3 +74,12 @@ class ChatCompletionRequest(BaseModel):
     def to_upstream_payload(self) -> dict[str, object]:
         """Serialize only fields supplied by the client and required contract fields."""
         return self.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+
+    def to_batch_shared_payload(self) -> dict[str, object]:
+        """Return exact shared batch fields while normalizing proven invariants."""
+        payload = self.to_upstream_payload()
+        payload.pop("messages", None)
+        payload.pop("stream", None)
+        payload.pop("stream_options", None)
+        payload.pop("n", None)
+        return payload

@@ -23,6 +23,9 @@ SETTING_NAMES = (
     "GLOBAL_MAX_INFLIGHT",
     "GLOBAL_MAX_QUEUE",
     "ADMISSION_QUEUE_TIMEOUT_SECONDS",
+    "DYNAMIC_BATCHING_ENABLED",
+    "DYNAMIC_BATCH_MAX_SIZE",
+    "DYNAMIC_BATCH_MAX_WAIT_SECONDS",
 )
 
 
@@ -54,6 +57,9 @@ def test_settings_defaults() -> None:
     assert settings.global_max_inflight == 16
     assert settings.global_max_queue == 64
     assert settings.admission_queue_timeout_seconds == 5.0
+    assert settings.dynamic_batching_enabled is False
+    assert settings.dynamic_batch_max_size == 8
+    assert settings.dynamic_batch_max_wait_seconds == 0.005
 
 
 def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -77,6 +83,9 @@ def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("GLOBAL_MAX_INFLIGHT", "8")
     monkeypatch.setenv("GLOBAL_MAX_QUEUE", "12")
     monkeypatch.setenv("ADMISSION_QUEUE_TIMEOUT_SECONDS", "1.5")
+    monkeypatch.setenv("DYNAMIC_BATCHING_ENABLED", "true")
+    monkeypatch.setenv("DYNAMIC_BATCH_MAX_SIZE", "16")
+    monkeypatch.setenv("DYNAMIC_BATCH_MAX_WAIT_SECONDS", "0.01")
 
     settings = Settings(_env_file=None)
 
@@ -98,6 +107,9 @@ def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.global_max_inflight == 8
     assert settings.global_max_queue == 12
     assert settings.admission_queue_timeout_seconds == 1.5
+    assert settings.dynamic_batching_enabled is True
+    assert settings.dynamic_batch_max_size == 16
+    assert settings.dynamic_batch_max_wait_seconds == 0.01
 
 
 @pytest.mark.parametrize("invalid_port", ["not-a-number", "0", "65536"])
@@ -228,3 +240,24 @@ def test_duplicate_tenant_api_keys_fail_validation() -> None:
 def test_invalid_global_admission_config_fails_validation(field: str, value: object) -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **{field: value})
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("dynamic_batch_max_size", 1),
+        ("dynamic_batch_max_size", 65),
+        ("dynamic_batch_max_wait_seconds", 0),
+        ("dynamic_batch_max_wait_seconds", 1.01),
+    ],
+)
+def test_invalid_dynamic_batch_config_fails_even_when_disabled(
+    field: str,
+    value: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            dynamic_batching_enabled=False,
+            **{field: value},
+        )

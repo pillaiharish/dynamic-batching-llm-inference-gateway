@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 Mode = Literal["streaming", "non_streaming", "unknown"]
 RequestOutcome = Literal["completed", "cancelled", "error"]
 AdmissionOutcome = Literal["admitted", "timeout", "rejected", "cancelled"]
-BackendOperation = Literal["generate", "stream"]
+BackendOperation = Literal["generate", "stream", "batch"]
 BackendOutcome = Literal["success", "error", "cancelled"]
-AccountingResult = Literal["observed", "missing", "invalid"]
+AccountingResult = Literal["observed", "missing", "invalid", "aggregate_only"]
 
 REQUEST_DURATION_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120)
 QUEUE_WAIT_BUCKETS = (
@@ -34,6 +34,8 @@ QUEUE_WAIT_BUCKETS = (
     10,
 )
 TTFT_BUCKETS = (0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1, 2, 5, 10, 30)
+BATCH_SIZE_BUCKETS = (1, 2, 4, 8, 16, 32, 64)
+BATCH_WAIT_BUCKETS = (0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 1)
 
 
 class GatewayMetrics:
@@ -129,7 +131,7 @@ class GatewayMetrics:
         )
         self.backend_inflight = Gauge(
             "gateway_backend_inflight",
-            "Current gateway-observed operations assigned to a backend.",
+            "Current gateway logical requests assigned to a backend operation.",
             ("backend_id",),
             registry=self.registry,
         )
@@ -137,6 +139,40 @@ class GatewayMetrics:
             "gateway_backend_requests_total",
             "Selected backend operations by full lifecycle outcome.",
             ("backend_id", "operation", "outcome"),
+            registry=self.registry,
+        )
+        self.batch_eligibility = Counter(
+            "gateway_batch_eligibility_total",
+            "Validated requests by dynamic-batching eligibility decision.",
+            ("decision", "reason"),
+            registry=self.registry,
+        )
+        self.batches = Counter(
+            "gateway_batches_total",
+            "Detached upstream batches by flush reason and lifecycle outcome.",
+            ("flush_reason", "outcome"),
+            registry=self.registry,
+        )
+        self.batch_size = Histogram(
+            "gateway_batch_size",
+            "Logical requests dispatched in one upstream batch operation.",
+            buckets=BATCH_SIZE_BUCKETS,
+            registry=self.registry,
+        )
+        self.batch_wait = Histogram(
+            "gateway_batch_wait_seconds",
+            "Per-member wait from dynamic-batch submission until dispatch.",
+            buckets=BATCH_WAIT_BUCKETS,
+            registry=self.registry,
+        )
+        self.batch_pending = Gauge(
+            "gateway_batch_pending",
+            "Admitted logical requests waiting for dynamic-batch dispatch.",
+            registry=self.registry,
+        )
+        self.batch_inflight = Gauge(
+            "gateway_batch_inflight",
+            "Detached upstream batch HTTP operations currently executing.",
             registry=self.registry,
         )
 
@@ -274,5 +310,65 @@ class GatewayMetrics:
         """Increment one stable, bounded gateway error code."""
         try:
             self.errors.labels(code).inc()
+        except Exception:
+            logger.warning("metrics_update_error", exc_info=True)
+
+    def batch_eligibility_observed(self, decision: str, reason: str) -> None:
+        """Record one bounded dynamic-batching eligibility decision."""
+        try:
+            self.batch_eligibility.labels(decision, reason).inc()
+        except Exception:
+            logger.warning("metrics_update_error", exc_info=True)
+
+    def batch_state_changed(self, pending: int, inflight: int) -> None:
+        """Mirror current process-local batch pending and operation counts."""
+        try:
+            self.batch_pending.set(max(0, pending))
+            self.batch_inflight.set(max(0, inflight))
+        except Exception:
+            logger.warning("metrics_update_error", exc_info=True)
+
+    def batch_dispatched(
+        self,
+        _flush_reason: Literal["size", "timeout"],
+        size: int,
+        wait_seconds: tuple[float, ...],
+    ) -> None:
+        """Observe one actual dispatch and every member's batch-only wait."""
+        try:
+            self.batch_size.observe(size)
+            for duration in wait_seconds:
+                self.batch_wait.observe(max(0.0, duration))
+        except Exception:
+            logger.warning("metrics_update_error", exc_info=True)
+
+    def batch_completed(
+        self,
+        flush_reason: Literal["size", "timeout"],
+        outcome: Literal["success", "error", "cancelled"],
+    ) -> None:
+        """Record one detached upstream batch at full operation completion."""
+        try:
+            self.batches.labels(flush_reason, outcome).inc()
+        except Exception:
+            logger.warning("metrics_update_error", exc_info=True)
+
+    def observe_batch_usage(
+        self,
+        usage_result: Literal["observed", "missing", "invalid"],
+        completion_tokens: int | None,
+        member_count: int,
+    ) -> None:
+        """Count aggregate tokens once and member coverage without false attribution."""
+        try:
+            if usage_result == "observed" and completion_tokens is not None:
+                self.observed_output_tokens.labels("non_streaming").inc(completion_tokens)
+                self.token_accounting_requests.labels("non_streaming", "aggregate_only").inc(
+                    member_count
+                )
+            else:
+                self.token_accounting_requests.labels("non_streaming", usage_result).inc(
+                    member_count
+                )
         except Exception:
             logger.warning("metrics_update_error", exc_info=True)

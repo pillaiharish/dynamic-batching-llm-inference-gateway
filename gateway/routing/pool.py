@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-from gateway.backends.base import BackendStream, HealthCheckBackend
+from gateway.backends.base import BackendBatchResult, BackendStream, HealthCheckBackend
 from gateway.core.errors import (
     BackendCapabilityError,
     BackendConfigurationError,
@@ -30,7 +30,7 @@ _HEALTH_IMPACTING_ERRORS = (
     BackendHTTPError,
 )
 
-BackendOperation = Literal["generate", "stream"]
+BackendOperation = Literal["generate", "stream", "batch"]
 BackendOutcome = Literal["success", "error", "cancelled"]
 
 
@@ -61,11 +61,12 @@ class _BackendSlot:
 class BackendLease:
     """An idempotently releasable assignment to one backend slot."""
 
-    def __init__(self, pool: BackendPool, slot: _BackendSlot) -> None:
+    def __init__(self, pool: BackendPool, slot: _BackendSlot, *, weight: int) -> None:
         self._pool = pool
         self._slot = slot
         self.backend_id = slot.backend_id
         self.backend = slot.backend
+        self.weight = weight
         self._released = False
 
     async def release(self) -> None:
@@ -277,9 +278,28 @@ class BackendPool:
             raise NoHealthyBackendError()
         return routed_stream
 
-    async def generate_batch(self, requests: list[Any]) -> list[Any]:
-        """Reject batching until the dynamic batching milestone."""
-        raise BackendCapabilityError("Batch generation is not supported")
+    async def generate_batch(self, requests: list[Any]) -> BackendBatchResult:
+        """Route one weighted batch operation to one healthy backend."""
+        if not requests:
+            raise BackendCapabilityError("Batch generation requires at least one request")
+        lease = await self._select(weight=len(requests))
+        try:
+            result = await lease.backend.generate_batch(requests)
+        except asyncio.CancelledError:
+            self._observe_operation(lease.backend_id, "batch", "cancelled")
+            raise
+        except _HEALTH_IMPACTING_ERRORS:
+            await self._mark_unhealthy(lease.backend_id)
+            self._observe_operation(lease.backend_id, "batch", "error")
+            raise
+        except Exception:
+            self._observe_operation(lease.backend_id, "batch", "error")
+            raise
+        else:
+            self._observe_operation(lease.backend_id, "batch", "success")
+            return result
+        finally:
+            await lease.release()
 
     async def is_routable(self) -> bool:
         """Return whether a new request can select at least one healthy backend."""
@@ -346,7 +366,9 @@ class BackendPool:
         except asyncio.CancelledError:
             raise
 
-    async def _select(self) -> BackendLease:
+    async def _select(self, *, weight: int = 1) -> BackendLease:
+        if weight <= 0:
+            raise ValueError("backend assignment weight must be positive")
         async with self._lock:
             if self._closed:
                 raise NoHealthyBackendError()
@@ -369,9 +391,9 @@ class BackendPool:
                 if (index := (self._cursor + offset) % len(self._slots)) in candidates
             )
             slot = self._slots[selected_index]
-            slot.inflight += 1
+            slot.inflight += weight
             self._cursor = (selected_index + 1) % len(self._slots)
-            lease = BackendLease(self, slot)
+            lease = BackendLease(self, slot, weight=weight)
             self._active_leases.add(lease)
             self._notify_observer()
 
@@ -389,10 +411,10 @@ class BackendPool:
         async with self._lock:
             if lease._released:
                 return
-            if lease._slot.inflight <= 0:
+            if lease._slot.inflight < lease.weight:
                 raise RuntimeError("backend inflight accounting became inconsistent")
             lease._released = True
-            lease._slot.inflight -= 1
+            lease._slot.inflight -= lease.weight
             self._active_leases.discard(lease)
             self._notify_observer()
 

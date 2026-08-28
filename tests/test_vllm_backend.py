@@ -551,10 +551,256 @@ async def test_health_probe_transport_failure_is_unhealthy(
 
 
 @pytest.mark.asyncio
-async def test_unsupported_backend_capabilities_fail_explicitly() -> None:
-    backend = make_backend(lambda _request: httpx2.Response(200, json=UPSTREAM_RESPONSE))
+async def test_generate_batch_sends_one_exact_request_with_backend_credentials() -> None:
+    captured: list[dict[str, Any]] = []
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        captured.append(
+            {
+                "method": request.method,
+                "url": str(request.url),
+                "authorization": request.headers.get("Authorization"),
+                "payload": json.loads(request.content),
+            }
+        )
+        return httpx2.Response(
+            200,
+            json={
+                "id": "chatcmpl-shared",
+                "object": "chat.completion",
+                "created": 123,
+                "model": "served-model",
+                "choices": [
+                    {
+                        "index": index,
+                        "message": {"role": "assistant", "content": f"result-{index}"},
+                        "finish_reason": "stop",
+                    }
+                    for index in range(3)
+                ],
+                "usage": {"prompt_tokens": 9, "completion_tokens": 27, "total_tokens": 36},
+            },
+        )
+
+    backend = make_backend(handler, api_key="backend-secret")
+    requests = [
+        chat_request(
+            messages=[{"role": "user", "content": f"private-{index}"}],
+            temperature=0.7,
+            max_tokens=64,
+            n=1,
+            stream=False,
+        )
+        for index in range(3)
+    ]
+    try:
+        result = await backend.generate_batch(requests)
+    finally:
+        await backend.close()
+
+    assert captured == [
+        {
+            "method": "POST",
+            "url": "https://vllm.example.test/root/v1/chat/completions/batch",
+            "authorization": "Bearer backend-secret",
+            "payload": {
+                "model": "served-model",
+                "temperature": 0.7,
+                "max_tokens": 64,
+                "messages": [
+                    [{"role": "user", "content": "private-0"}],
+                    [{"role": "user", "content": "private-1"}],
+                    [{"role": "user", "content": "private-2"}],
+                ],
+            },
+        }
+    ]
+    assert result.aggregate_completion_tokens == 27
+    assert result.usage_result == "observed"
+    assert all("usage" not in response for response in result.responses)
+    assert {response["id"] for response in result.responses} == {"chatcmpl-shared"}
+
+
+@pytest.mark.asyncio
+async def test_generate_batch_demultiplexes_out_of_order_without_response_leakage() -> None:
+    choices = [
+        {
+            "index": index,
+            "message": {"role": "assistant", "content": content},
+            "finish_reason": "stop",
+        }
+        for index, content in ((2, "gamma-result"), (0, "alpha-result"), (1, "beta-result"))
+    ]
+    backend = make_backend(
+        lambda _request: httpx2.Response(
+            200,
+            json={**UPSTREAM_RESPONSE, "choices": choices},
+        )
+    )
+    try:
+        result = await backend.generate_batch(
+            [chat_request(messages=[{"role": "user", "content": value}]) for value in "abc"]
+        )
+    finally:
+        await backend.close()
+
+    assert [response["choices"][0]["message"]["content"] for response in result.responses] == [
+        "alpha-result",
+        "beta-result",
+        "gamma-result",
+    ]
+    assert all(response["choices"][0]["index"] == 0 for response in result.responses)
+    assert all("usage" not in response for response in result.responses)
+
+
+@pytest.mark.parametrize(
+    "choices",
+    [
+        None,
+        [{"index": 0}, {"index": 0}],
+        [{"index": 0}, {}],
+        [{"index": 0}, {"index": 2}],
+        [{"index": 0}],
+        [{"index": 0}, {"index": "1"}],
+        [{"index": 0}, {"index": True}],
+        [{"index": -1}, {"index": 1}],
+    ],
+)
+@pytest.mark.asyncio
+async def test_generate_batch_rejects_malformed_choice_association(choices: Any) -> None:
+    payload = {"id": "chatcmpl-batch"}
+    if choices is not None:
+        payload["choices"] = choices
+    backend = make_backend(lambda _request: httpx2.Response(200, json=payload))
+    try:
+        with pytest.raises(BackendProtocolError):
+            await backend.generate_batch([chat_request(), chat_request()])
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize(
+    "requests",
+    [
+        [],
+        [chat_request(stream=True)],
+        [chat_request(n=2)],
+        [chat_request(temperature=0.7), chat_request(temperature=0.8)],
+        [chat_request(), chat_request(temperature=1.0)],
+    ],
+)
+@pytest.mark.asyncio
+async def test_generate_batch_defensively_rejects_incompatible_members(
+    requests: list[ChatCompletionRequest],
+) -> None:
+    called = False
+
+    async def handler(_request: httpx2.Request) -> httpx2.Response:
+        nonlocal called
+        called = True
+        return httpx2.Response(200, json=UPSTREAM_RESPONSE)
+
+    backend = make_backend(handler)
     try:
         with pytest.raises(BackendCapabilityError):
+            await backend.generate_batch(requests)
+    finally:
+        await backend.close()
+
+    assert called is False
+
+
+@pytest.mark.parametrize(
+    "usage,expected_result",
+    [
+        (None, "missing"),
+        ({}, "invalid"),
+        ({"completion_tokens": -1}, "invalid"),
+        ({"completion_tokens": True}, "invalid"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generate_batch_classifies_aggregate_usage_without_member_copy(
+    usage: Any,
+    expected_result: str,
+) -> None:
+    payload = {
+        "id": "chatcmpl-batch",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}}],
+    }
+    if usage is not None:
+        payload["usage"] = usage
+    backend = make_backend(lambda _request: httpx2.Response(200, json=payload))
+    try:
+        result = await backend.generate_batch([chat_request()])
+    finally:
+        await backend.close()
+
+    assert result.usage_result == expected_result
+    assert result.aggregate_completion_tokens is None
+    assert "usage" not in result.responses[0]
+
+
+@pytest.mark.parametrize(
+    "status_code,expected_error",
+    [
+        (400, BackendRequestRejectedError),
+        (404, BackendRequestRejectedError),
+        (422, BackendRequestRejectedError),
+        (401, BackendConfigurationError),
+        (403, BackendConfigurationError),
+        (429, BackendHTTPError),
+        (500, BackendHTTPError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generate_batch_normalizes_upstream_http_failures(
+    status_code: int,
+    expected_error: type[Exception],
+) -> None:
+    backend = make_backend(lambda _request: httpx2.Response(status_code))
+    try:
+        with pytest.raises(expected_error):
+            await backend.generate_batch([chat_request()])
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize(
+    "exception_type,expected_error",
+    [
+        (httpx2.ConnectError, BackendUnavailableError),
+        (httpx2.ReadTimeout, BackendTimeoutError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generate_batch_normalizes_transport_failures(
+    exception_type: type[httpx2.RequestError],
+    expected_error: type[Exception],
+) -> None:
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        raise exception_type("batch transport failed", request=request)
+
+    backend = make_backend(handler)
+    try:
+        with pytest.raises(expected_error):
+            await backend.generate_batch([chat_request()])
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx2.Response(200, content=b"not-json"),
+        httpx2.Response(200, json=["not", "an", "object"]),
+    ],
+)
+@pytest.mark.asyncio
+async def test_generate_batch_rejects_invalid_json_success(response: httpx2.Response) -> None:
+    backend = make_backend(lambda _request: response)
+    try:
+        with pytest.raises(BackendProtocolError):
             await backend.generate_batch([chat_request()])
     finally:
         await backend.close()

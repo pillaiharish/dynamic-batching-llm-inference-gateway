@@ -4,8 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
-from gateway.backends.base import BackendStream, InferenceBackend
+from gateway.backends.base import BackendBatchResult, BackendStream, InferenceBackend
 from gateway.backends.fake import FakeBackend
+from gateway.batching.models import BatchItemResult
 from gateway.config import Settings
 from gateway.core.errors import BackendTimeoutError
 
@@ -272,3 +273,119 @@ def test_backend_error_is_normalized_and_releases_admission_slot() -> None:
     assert failed.json()["error"]["message"] == "Inference backend timed out"
     assert succeeded.status_code == 200
     assert backend.calls == 2
+
+
+class TrackingBackend(FakeBackend):
+    def __init__(self) -> None:
+        super().__init__()
+        self.generate_count = 0
+        self.stream_count = 0
+        self.batch_count = 0
+
+    async def generate(self, request: Any) -> dict[str, Any]:
+        self.generate_count += 1
+        return await super().generate(request)
+
+    async def stream(self, request: Any) -> BackendStream:
+        self.stream_count += 1
+        return await super().stream(request)
+
+    async def generate_batch(self, requests: list[Any]) -> BackendBatchResult:
+        self.batch_count += 1
+        return await super().generate_batch(requests)
+
+
+class SpyBatcher:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Any]] = []
+        self.admission_inflight: list[int] = []
+        self.app: Any = None
+        self.shutdown_called = False
+
+    async def submit(self, tenant_id: str, request: Any) -> BatchItemResult:
+        self.calls.append((tenant_id, request))
+        snapshot = await self.app.state.admission_controller.snapshot()
+        self.admission_inflight.append(snapshot.global_inflight)
+        return BatchItemResult(
+            response={
+                "id": "chatcmpl-batched",
+                "object": "chat.completion",
+                "model": request.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "batched response"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
+        )
+
+    async def shutdown(self) -> None:
+        self.shutdown_called = True
+
+
+def test_route_batches_only_eligible_requests_after_admission() -> None:
+    backend = TrackingBackend()
+    batcher = SpyBatcher()
+    settings = make_settings(dynamic_batching_enabled=True)
+    app = create_app(settings, backend=backend, dynamic_batcher=batcher)  # type: ignore[arg-type]
+    batcher.app = app
+
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        eligible = client.post("/v1/chat/completions", json=VALID_REQUEST)
+        n_gt_one = client.post("/v1/chat/completions", json={**VALID_REQUEST, "n": 2})
+        streaming = client.post("/v1/chat/completions", json={**VALID_REQUEST, "stream": True})
+
+    assert eligible.status_code == 200
+    assert n_gt_one.status_code == 200
+    assert eligible.json()["choices"][0]["message"]["content"] == "batched response"
+    assert batcher.admission_inflight == [1]
+    assert [tenant_id for tenant_id, _request in batcher.calls] == ["tenant-a"]
+    assert backend.generate_count == 1
+    assert backend.stream_count == 1
+    assert backend.batch_count == 0
+    assert streaming.headers["Content-Type"].startswith("text/event-stream")
+    assert batcher.shutdown_called is True
+    metrics = app.state.metrics
+    assert (
+        metrics.registry.get_sample_value(
+            "gateway_batch_eligibility_total",
+            {"decision": "eligible", "reason": "eligible"},
+        )
+        == 1
+    )
+    assert (
+        metrics.registry.get_sample_value(
+            "gateway_batch_eligibility_total",
+            {"decision": "bypass", "reason": "n_gt_1"},
+        )
+        == 1
+    )
+    assert (
+        metrics.registry.get_sample_value(
+            "gateway_batch_eligibility_total",
+            {"decision": "bypass", "reason": "streaming"},
+        )
+        == 1
+    )
+
+
+def test_batching_disabled_uses_direct_generation_without_batcher_infrastructure() -> None:
+    backend = TrackingBackend()
+    app = create_app(make_settings(dynamic_batching_enabled=False), backend=backend)
+
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        assert app.state.dynamic_batcher is None
+        response = client.post("/v1/chat/completions", json=VALID_REQUEST)
+
+    assert response.status_code == 200
+    assert backend.generate_count == 1
+    assert backend.batch_count == 0
+    assert (
+        app.state.metrics.registry.get_sample_value(
+            "gateway_batch_eligibility_total",
+            {"decision": "bypass", "reason": "disabled"},
+        )
+        == 1
+    )

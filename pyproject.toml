@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynamic-batching-llm-inference-gateway"
-description = "OpenAI-compatible gateway with health-aware multi-vLLM routing"
+description = "OpenAI-compatible gateway with compatibility-aware dynamic batching"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

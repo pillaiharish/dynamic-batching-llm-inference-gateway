@@ -1,7 +1,17 @@
 """Backend-neutral inference contracts."""
 
 from collections.abc import AsyncIterator
-from typing import Any, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True, slots=True)
+class BackendBatchResult:
+    """Demultiplexed responses plus honest aggregate usage metadata."""
+
+    responses: list[dict[str, Any]]
+    aggregate_completion_tokens: int | None
+    usage_result: Literal["observed", "missing", "invalid"]
 
 
 @runtime_checkable
@@ -32,8 +42,8 @@ class InferenceBackend(Protocol):
         """Open one streaming response before downstream headers are sent."""
         ...
 
-    async def generate_batch(self, requests: list[Any]) -> list[Any]:
-        """Generate responses for a batch while preserving input order."""
+    async def generate_batch(self, requests: list[Any]) -> BackendBatchResult:
+        """Generate one upstream batch and return demultiplexed member responses."""
         ...
 
     async def close(self) -> None:

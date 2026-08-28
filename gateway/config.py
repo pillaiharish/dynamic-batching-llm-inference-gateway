@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     global_max_inflight: int = Field(default=16, gt=0)
     global_max_queue: int = Field(default=64, ge=0)
     admission_queue_timeout_seconds: float = Field(default=5.0, gt=0)
+    dynamic_batching_enabled: bool = False
+    dynamic_batch_max_size: int = Field(default=8, ge=2, le=64)
+    dynamic_batch_max_wait_seconds: float = Field(default=0.005, gt=0, le=1)
 
     @field_validator("log_level", mode="before")
     @classmethod
