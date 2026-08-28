@@ -63,10 +63,12 @@ class AdmissionLease:
         tenant_id: str,
         *,
         was_queued: bool,
+        granted_at: float,
     ) -> None:
         self._controller = controller
         self.tenant_id = tenant_id
         self.was_queued = was_queued
+        self._granted_at = granted_at
         self._released = False
 
     async def release(self) -> None:
@@ -133,7 +135,11 @@ class AdmissionController:
             self._observe_wait(started_at, "cancelled")
             raise
         else:
-            self._observe_wait(started_at, "admitted")
+            self._observe_wait(
+                started_at,
+                "admitted",
+                finished_at=lease._granted_at,
+            )
             return lease
 
     async def _acquire(self, tenant: TenantContext) -> AdmissionLease:
@@ -295,6 +301,7 @@ class AdmissionController:
             self,
             state.tenant.tenant_id,
             was_queued=was_queued,
+            granted_at=self._clock(),
         )
         self._notify_observer()
         return lease
@@ -322,12 +329,18 @@ class AdmissionController:
         except KeyError as exc:
             raise AdmissionUnavailableError() from exc
 
-    def _observe_wait(self, started_at: float, outcome: AdmissionWaitOutcome) -> None:
+    def _observe_wait(
+        self,
+        started_at: float,
+        outcome: AdmissionWaitOutcome,
+        *,
+        finished_at: float | None = None,
+    ) -> None:
         if self._observer is None:
             return
         try:
             self._observer.admission_wait_observed(
-                max(0.0, self._clock() - started_at),
+                max(0.0, (finished_at if finished_at is not None else self._clock()) - started_at),
                 outcome,
             )
         except Exception:

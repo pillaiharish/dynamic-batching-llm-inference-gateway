@@ -510,6 +510,7 @@ async def test_admission_gauges_and_queue_wait_follow_real_transitions() -> None
 
     clock.value = 10.4
     await first.release()
+    clock.value = 99.0
     second = await queued_task
 
     assert sample(metrics, "gateway_admission_queued") == 0
