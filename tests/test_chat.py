@@ -14,6 +14,18 @@ VALID_REQUEST: dict[str, Any] = {
     "model": "test-model",
     "messages": [{"role": "user", "content": "Hello"}],
 }
+TENANTS = {
+    "tenant-a": {
+        "api_key": "tenant-a-key",
+        "max_inflight": 2,
+        "max_queue": 4,
+    }
+}
+AUTH_HEADERS = {"Authorization": "Bearer tenant-a-key"}
+
+
+def make_settings(**overrides: Any) -> Settings:
+    return Settings(_env_file=None, tenants_json=TENANTS, **overrides)
 
 
 def make_client(
@@ -23,9 +35,10 @@ def make_client(
 ) -> TestClient:
     return TestClient(
         create_app(
-            settings or Settings(_env_file=None),
+            settings or make_settings(),
             backend=backend or FakeBackend(),
-        )
+        ),
+        headers=AUTH_HEADERS,
     )
 
 
@@ -164,7 +177,7 @@ def test_configured_generation_limits(
     value: int,
     expected_message: str,
 ) -> None:
-    settings = Settings(_env_file=None, max_completion_tokens=8, max_choices=2)
+    settings = make_settings(max_completion_tokens=8, max_choices=2)
 
     with make_client(settings=settings) as client:
         response = client.post(
@@ -220,9 +233,16 @@ def test_injected_backend_is_closed_on_shutdown() -> None:
     assert backend.closed is True
 
 
-class TimeoutBackend:
+class FailOnceBackend:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.fake = FakeBackend()
+
     async def generate(self, _request: Any) -> Any:
-        raise BackendTimeoutError()
+        self.calls += 1
+        if self.calls == 1:
+            raise BackendTimeoutError()
+        return await self.fake.generate(_request)
 
     def stream(self, _request: Any) -> AsyncIterator[Any]:
         raise NotImplementedError
@@ -231,15 +251,20 @@ class TimeoutBackend:
         raise NotImplementedError
 
     async def close(self) -> None:
-        return None
+        await self.fake.close()
 
 
-def test_backend_error_is_normalized_by_route() -> None:
-    app = create_app(Settings(_env_file=None), backend=TimeoutBackend())
+def test_backend_error_is_normalized_and_releases_admission_slot() -> None:
+    backend = FailOnceBackend()
+    settings = make_settings(global_max_inflight=1)
+    app = create_app(settings, backend=backend)
 
-    with TestClient(app) as client:
-        response = client.post("/v1/chat/completions", json=VALID_REQUEST)
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        failed = client.post("/v1/chat/completions", json=VALID_REQUEST)
+        succeeded = client.post("/v1/chat/completions", json=VALID_REQUEST)
 
-    assert response.status_code == 504
-    assert response.json()["error"]["code"] == "backend_timeout"
-    assert response.json()["error"]["message"] == "Inference backend timed out"
+    assert failed.status_code == 504
+    assert failed.json()["error"]["code"] == "backend_timeout"
+    assert failed.json()["error"]["message"] == "Inference backend timed out"
+    assert succeeded.status_code == 200
+    assert backend.calls == 2

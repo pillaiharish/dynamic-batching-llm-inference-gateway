@@ -22,6 +22,8 @@ class JSONFormatter(logging.Formatter):
         "error_code",
         "backend",
         "upstream_status",
+        "tenant_id",
+        "admission_result",
     )
 
     def format(self, record: logging.LogRecord) -> str:
