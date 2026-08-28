@@ -24,6 +24,9 @@ class JSONFormatter(logging.Formatter):
         "upstream_status",
         "tenant_id",
         "admission_result",
+        "streaming",
+        "stream_outcome",
+        "stream_error_type",
     )
 
     def format(self, record: logging.LogRecord) -> str:

@@ -216,13 +216,6 @@ async def request_validation_error_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Normalize malformed JSON and schema failures without exposing internals."""
-    message = "Invalid chat completion request"
-    if any(
-        error.get("loc") == ("body", "stream") and error.get("input") is True
-        for error in exc.errors()
-    ):
-        message = "Streaming chat completions are not supported"
-
     logger.info(
         "request validation failed",
         extra={"error_code": "invalid_request", "request_id": _request_id_from(request)},
@@ -231,7 +224,7 @@ async def request_validation_error_handler(
         request,
         status_code=400,
         code="invalid_request",
-        message=message,
+        message="Invalid chat completion request",
     )
 
 

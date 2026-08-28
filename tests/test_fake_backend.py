@@ -17,12 +17,12 @@ async def test_generate_is_deterministic() -> None:
 async def test_stream_is_deterministic() -> None:
     backend = FakeBackend()
 
-    chunks = [chunk async for chunk in backend.stream("hello")]
+    stream = await backend.stream("hello")
+    chunks = [chunk async for chunk in stream]
 
-    assert chunks == [
-        {"index": 0, "chunk": "fake"},
-        {"index": 1, "chunk": "hello"},
-    ]
+    assert chunks == list(backend.stream_chunks)
+    assert backend.last_stream is not None
+    assert backend.last_stream.closed is True
 
 
 @pytest.mark.asyncio

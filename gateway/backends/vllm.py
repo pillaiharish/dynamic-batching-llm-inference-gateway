@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import httpx2
 
+from gateway.backends.base import BackendStream
 from gateway.config import Settings
 from gateway.core.errors import (
     BackendCapabilityError,
@@ -23,8 +24,40 @@ from gateway.schemas.chat import ChatCompletionRequest
 logger = logging.getLogger(__name__)
 
 
+class _VLLMBackendStream:
+    """Own one unbuffered vLLM HTTP response."""
+
+    def __init__(
+        self,
+        response: httpx2.Response,
+        on_close: Callable[[_VLLMBackendStream], None],
+    ) -> None:
+        self._response = response
+        self._on_close = on_close
+        self._closed = False
+
+    def __aiter__(self) -> AsyncIterator[bytes]:
+        return self._iterate()
+
+    async def _iterate(self) -> AsyncIterator[bytes]:
+        try:
+            async for chunk in self._response.aiter_bytes():
+                yield chunk
+        finally:
+            await self.aclose()
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._response.aclose()
+        finally:
+            self._on_close(self)
+
+
 class VLLMBackend:
-    """Forward validated non-streaming chat requests to one configured vLLM server."""
+    """Forward validated chat requests to one configured vLLM server."""
 
     def __init__(
         self,
@@ -48,6 +81,7 @@ class VLLMBackend:
             timeout=timeout,
             transport=transport,
         )
+        self._active_streams: set[_VLLMBackendStream] = set()
 
     @property
     def is_closed(self) -> bool:
@@ -82,20 +116,52 @@ class VLLMBackend:
             raise BackendProtocolError()
         return payload
 
-    def stream(self, request: Any) -> AsyncIterator[Any]:
-        """Return an iterator that explicitly rejects unsupported streaming."""
-        return self._unsupported_stream(request)
+    async def stream(self, request: ChatCompletionRequest) -> BackendStream:
+        """Open and validate an unbuffered vLLM SSE response."""
+        upstream_request = self._client.build_request(
+            "POST",
+            "v1/chat/completions",
+            json=request.to_upstream_payload(),
+            headers={"Accept": "text/event-stream"},
+        )
+        try:
+            response = await self._client.send(upstream_request, stream=True)
+        except httpx2.TimeoutException as exc:
+            raise BackendTimeoutError() from exc
+        except httpx2.ConnectError as exc:
+            raise BackendUnavailableError() from exc
+        except httpx2.RequestError as exc:
+            raise BackendUnavailableError() from exc
+        except RuntimeError as exc:
+            raise BackendUnavailableError() from exc
 
-    async def _unsupported_stream(self, _request: Any) -> AsyncIterator[Any]:
-        raise BackendCapabilityError("Streaming is not supported in v0.2")
-        yield  # pragma: no cover
+        logger.info(
+            "vLLM streaming response opened",
+            extra={"backend": "vllm", "upstream_status": response.status_code},
+        )
+        try:
+            self._raise_for_upstream_status(response.status_code)
+        except Exception:
+            await response.aclose()
+            raise
+
+        media_type = response.headers.get("Content-Type", "").partition(";")[0]
+        if media_type.strip().casefold() != "text/event-stream":
+            await response.aclose()
+            raise BackendProtocolError()
+
+        stream = _VLLMBackendStream(response, self._active_streams.discard)
+        self._active_streams.add(stream)
+        return stream
 
     async def generate_batch(self, requests: list[Any]) -> list[Any]:
         """Reject backend batching until the batching milestone is implemented."""
-        raise BackendCapabilityError("Batch generation is not supported in v0.2")
+        raise BackendCapabilityError("Batch generation is not supported")
 
     async def close(self) -> None:
         """Close the long-lived pooled HTTP client."""
+        for stream in tuple(self._active_streams):
+            await stream.aclose()
         await self._client.aclose()
 
     @staticmethod

@@ -1,3 +1,4 @@
+import asyncio
 import json
 from typing import Any
 
@@ -34,6 +35,45 @@ UPSTREAM_RESPONSE = {
     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
     "vllm_extension": {"preserved": True},
 }
+
+SSE_CHUNKS = (
+    b'data: {"cho',
+    b'ices":[{"delta":{"content":"Hel"}}]}\n\ndata: {"choices":[{"delta":{"content":"lo"}}]}\n\n',
+    b": keepalive\n\n",
+    b"data: [DONE]\n\n",
+)
+
+
+class TrackingByteStream(httpx2.AsyncByteStream):
+    def __init__(self, chunks: tuple[bytes, ...] = SSE_CHUNKS) -> None:
+        self.chunks = chunks
+        self.iterated = False
+        self.closed = False
+
+    async def __aiter__(self):
+        self.iterated = True
+        for chunk in self.chunks:
+            yield chunk
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class BlockingByteStream(httpx2.AsyncByteStream):
+    def __init__(self) -> None:
+        self.first_produced = asyncio.Event()
+        self.release_second = asyncio.Event()
+        self.closed = False
+
+    async def __aiter__(self):
+        self.first_produced.set()
+        yield SSE_CHUNKS[0]
+        await self.release_second.wait()
+        yield SSE_CHUNKS[1]
+
+    async def aclose(self) -> None:
+        self.closed = True
+        self.release_second.set()
 
 
 def chat_request(**overrides: Any) -> ChatCompletionRequest:
@@ -209,14 +249,185 @@ async def test_invalid_success_response_maps_to_protocol_error(
 
 
 @pytest.mark.asyncio
+async def test_stream_opens_unbuffered_request_and_relays_exact_bytes() -> None:
+    captured: dict[str, Any] = {}
+    response_body = TrackingByteStream()
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["authorization"] = request.headers["Authorization"]
+        captured["accept"] = request.headers["Accept"]
+        captured["payload"] = json.loads(request.content)
+        return httpx2.Response(
+            200,
+            headers={"Content-Type": "text/event-stream; charset=utf-8"},
+            stream=response_body,
+        )
+
+    backend = make_backend(handler, vllm_api_key="backend-secret")
+    try:
+        stream = await backend.stream(chat_request(stream=True))
+        assert response_body.iterated is False
+        chunks = [chunk async for chunk in stream]
+    finally:
+        await backend.close()
+
+    assert captured == {
+        "method": "POST",
+        "url": "https://vllm.example.test/root/v1/chat/completions",
+        "authorization": "Bearer backend-secret",
+        "accept": "text/event-stream",
+        "payload": {
+            "model": "served-model",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "stream": True,
+        },
+    }
+    assert "tenant" not in captured["authorization"]
+    assert chunks == list(SSE_CHUNKS)
+    assert b"".join(chunks).count(b"data: [DONE]\n\n") == 1
+    assert response_body.closed is True
+
+
+@pytest.mark.asyncio
+async def test_stream_open_does_not_consume_body_before_returning() -> None:
+    response_body = BlockingByteStream()
+    backend = make_backend(
+        lambda _request: httpx2.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            stream=response_body,
+        )
+    )
+    stream = await backend.stream(chat_request(stream=True))
+
+    assert response_body.first_produced.is_set() is False
+    iterator = stream.__aiter__()
+    assert await anext(iterator) == SSE_CHUNKS[0]
+    assert response_body.first_produced.is_set() is True
+    response_body.release_second.set()
+    assert await anext(iterator) == SSE_CHUNKS[1]
+    with pytest.raises(StopAsyncIteration):
+        await anext(iterator)
+    await backend.close()
+
+
+@pytest.mark.parametrize(
+    "exception_type,expected_error",
+    [
+        (httpx2.ConnectError, BackendUnavailableError),
+        (httpx2.ReadTimeout, BackendTimeoutError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_stream_open_transport_failures_are_normalized(
+    exception_type: type[httpx2.RequestError],
+    expected_error: type[Exception],
+) -> None:
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        raise exception_type("stream open failed", request=request)
+
+    backend = make_backend(handler)
+    try:
+        with pytest.raises(expected_error):
+            await backend.stream(chat_request(stream=True))
+    finally:
+        await backend.close()
+
+
+@pytest.mark.parametrize(
+    "status_code,expected_error",
+    [
+        (400, BackendRequestRejectedError),
+        (404, BackendRequestRejectedError),
+        (422, BackendRequestRejectedError),
+        (401, BackendConfigurationError),
+        (403, BackendConfigurationError),
+        (429, BackendHTTPError),
+        (500, BackendHTTPError),
+        (503, BackendHTTPError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_stream_upstream_http_errors_close_response_before_raising(
+    status_code: int,
+    expected_error: type[Exception],
+) -> None:
+    response_body = TrackingByteStream()
+    backend = make_backend(lambda _request: httpx2.Response(status_code, stream=response_body))
+    try:
+        with pytest.raises(expected_error):
+            await backend.stream(chat_request(stream=True))
+    finally:
+        await backend.close()
+
+    assert response_body.iterated is False
+    assert response_body.closed is True
+
+
+@pytest.mark.parametrize("content_type", ["application/json", "text/plain", ""])
+@pytest.mark.asyncio
+async def test_stream_rejects_non_sse_success_and_closes_response(content_type: str) -> None:
+    response_body = TrackingByteStream()
+    headers = {"Content-Type": content_type} if content_type else {}
+    backend = make_backend(
+        lambda _request: httpx2.Response(200, headers=headers, stream=response_body)
+    )
+    try:
+        with pytest.raises(BackendProtocolError):
+            await backend.stream(chat_request(stream=True))
+    finally:
+        await backend.close()
+
+    assert response_body.iterated is False
+    assert response_body.closed is True
+
+
+@pytest.mark.asyncio
+async def test_backend_close_closes_open_stream_without_consuming_it() -> None:
+    response_body = TrackingByteStream()
+    backend = make_backend(
+        lambda _request: httpx2.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            stream=response_body,
+        )
+    )
+    await backend.stream(chat_request(stream=True))
+
+    await backend.close()
+
+    assert response_body.iterated is False
+    assert response_body.closed is True
+
+
+@pytest.mark.asyncio
+async def test_explicit_stream_close_releases_upstream_response() -> None:
+    response_body = TrackingByteStream()
+    backend = make_backend(
+        lambda _request: httpx2.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            stream=response_body,
+        )
+    )
+    stream = await backend.stream(chat_request(stream=True))
+
+    await stream.aclose()
+    await stream.aclose()
+    await backend.close()
+
+    assert response_body.iterated is False
+    assert response_body.closed is True
+
+
+@pytest.mark.asyncio
 async def test_unsupported_backend_capabilities_fail_explicitly() -> None:
     backend = make_backend(lambda _request: httpx2.Response(200, json=UPSTREAM_RESPONSE))
     try:
         with pytest.raises(BackendCapabilityError):
             await backend.generate_batch([chat_request()])
-        with pytest.raises(BackendCapabilityError):
-            async for _chunk in backend.stream(chat_request()):
-                pass
     finally:
         await backend.close()
 

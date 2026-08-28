@@ -1,10 +1,32 @@
 """Deterministic backend used by tests and local development."""
 
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+from gateway.backends.base import BackendStream
 from gateway.schemas.chat import ChatCompletionRequest
+
+
+@dataclass(slots=True)
+class FakeBackendStream:
+    """Small byte stream used for deterministic gateway tests."""
+
+    chunks: tuple[bytes, ...]
+    closed: bool = False
+
+    def __aiter__(self) -> AsyncIterator[bytes]:
+        return self._iterate()
+
+    async def _iterate(self) -> AsyncIterator[bytes]:
+        try:
+            for chunk in self.chunks:
+                yield chunk
+        finally:
+            await self.aclose()
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 @dataclass(slots=True)
@@ -12,7 +34,12 @@ class FakeBackend:
     """A tiny deterministic implementation of the inference backend contract."""
 
     prefix: str = "fake"
+    stream_chunks: tuple[bytes, ...] = (
+        b'data: {"id":"chatcmpl-fake","choices":[{"delta":{"content":"fake"}}]}\n\n',
+        b"data: [DONE]\n\n",
+    )
     closed: bool = False
+    last_stream: FakeBackendStream | None = field(default=None, init=False)
 
     async def generate(self, request: Any) -> dict[str, Any]:
         if isinstance(request, ChatCompletionRequest):
@@ -40,12 +67,14 @@ class FakeBackend:
             }
         return {"input": request, "output": f"{self.prefix}:{request}"}
 
-    async def stream(self, request: Any) -> AsyncIterator[dict[str, Any]]:
-        for index, chunk in enumerate((self.prefix, str(request))):
-            yield {"index": index, "chunk": chunk}
+    async def stream(self, _request: Any) -> BackendStream:
+        self.last_stream = FakeBackendStream(self.stream_chunks)
+        return self.last_stream
 
     async def generate_batch(self, requests: list[Any]) -> list[dict[str, Any]]:
         return [await self.generate(request) for request in requests]
 
     async def close(self) -> None:
+        if self.last_stream is not None:
+            await self.last_stream.aclose()
         self.closed = True
