@@ -6,7 +6,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, Protocol
 
 from gateway.backends.base import BackendStream, HealthCheckBackend
 from gateway.core.errors import (
@@ -29,6 +29,25 @@ _HEALTH_IMPACTING_ERRORS = (
     BackendConfigurationError,
     BackendHTTPError,
 )
+
+BackendOperation = Literal["generate", "stream"]
+BackendOutcome = Literal["success", "error", "cancelled"]
+
+
+class BackendPoolObserver(Protocol):
+    """Synchronous, non-authoritative observation of routing transitions."""
+
+    def backend_state_changed(
+        self,
+        backends: Mapping[str, tuple[bool, int]],
+    ) -> None: ...
+
+    def backend_operation_observed(
+        self,
+        backend_id: str,
+        operation: BackendOperation,
+        outcome: BackendOutcome,
+    ) -> None: ...
 
 
 @dataclass(slots=True)
@@ -68,6 +87,16 @@ class RoutedBackendStream:
         self._close_lock = asyncio.Lock()
         self._closed = False
 
+    @property
+    def backend_id(self) -> str:
+        """Expose the bounded selected backend ID to passive stream observers."""
+        return self._lease.backend_id
+
+    @property
+    def upstream_request_started_at(self) -> float | None:
+        """Delegate the leaf's timestamp captured immediately before HTTP begins."""
+        return getattr(self._stream, "upstream_request_started_at", None)
+
     def __aiter__(self) -> AsyncIterator[bytes]:
         return self._iterate()
 
@@ -75,24 +104,51 @@ class RoutedBackendStream:
         try:
             async for chunk in self._stream:
                 yield chunk
+        except asyncio.CancelledError:
+            await self._finish("cancelled")
+            raise
         except _HEALTH_IMPACTING_ERRORS:
             await self._pool._mark_unhealthy(self._lease.backend_id)
+            await self._finish("error")
             raise
+        except Exception:
+            await self._finish("error")
+            raise
+        else:
+            await self._finish("success")
         finally:
-            await self.aclose()
+            if not self._closed:
+                await self._finish("cancelled")
 
     async def aclose(self) -> None:
+        await self._finish("cancelled")
+
+    async def _finish(self, outcome: BackendOutcome) -> None:
         async with self._close_lock:
             if self._closed:
                 return
             self._closed = True
+            final_outcome = outcome
             try:
                 await self._stream.aclose()
+            except asyncio.CancelledError:
+                final_outcome = "cancelled"
+                raise
+            except Exception:
+                final_outcome = "error"
+                raise
             finally:
                 try:
                     await self._lease.release()
                 finally:
-                    await self._pool._unregister_stream(self)
+                    try:
+                        await self._pool._unregister_stream(self)
+                    finally:
+                        self._pool._observe_operation(
+                            self._lease.backend_id,
+                            "stream",
+                            final_outcome,
+                        )
 
 
 class BackendPool:
@@ -104,6 +160,7 @@ class BackendPool:
         *,
         health_interval_seconds: float,
         health_timeout_seconds: float,
+        observer: BackendPoolObserver | None = None,
     ) -> None:
         if not backends:
             raise ValueError("at least one backend is required")
@@ -130,6 +187,13 @@ class BackendPool:
         self._active_streams: set[RoutedBackendStream] = set()
         self._started = False
         self._closed = False
+        self._observer = observer
+        self._notify_observer()
+
+    def set_observer(self, observer: BackendPoolObserver | None) -> None:
+        """Attach an optional observer and immediately publish current state."""
+        self._observer = observer
+        self._notify_observer()
 
     async def start(self) -> None:
         """Discover initial health and start the single periodic probe loop."""
@@ -171,10 +235,20 @@ class BackendPool:
         """Route one non-streaming operation and release assignment on every exit."""
         lease = await self._select()
         try:
-            return await lease.backend.generate(request)
+            result = await lease.backend.generate(request)
+        except asyncio.CancelledError:
+            self._observe_operation(lease.backend_id, "generate", "cancelled")
+            raise
         except _HEALTH_IMPACTING_ERRORS:
             await self._mark_unhealthy(lease.backend_id)
+            self._observe_operation(lease.backend_id, "generate", "error")
             raise
+        except Exception:
+            self._observe_operation(lease.backend_id, "generate", "error")
+            raise
+        else:
+            self._observe_operation(lease.backend_id, "generate", "success")
+            return result
         finally:
             await lease.release()
 
@@ -183,17 +257,23 @@ class BackendPool:
         lease = await self._select()
         try:
             stream = await lease.backend.stream(request)
+        except asyncio.CancelledError:
+            self._observe_operation(lease.backend_id, "stream", "cancelled")
+            await lease.release()
+            raise
         except _HEALTH_IMPACTING_ERRORS:
             await self._mark_unhealthy(lease.backend_id)
+            self._observe_operation(lease.backend_id, "stream", "error")
             await lease.release()
             raise
         except BaseException:
+            self._observe_operation(lease.backend_id, "stream", "error")
             await lease.release()
             raise
 
         routed_stream = RoutedBackendStream(self, stream, lease)
         if not await self._register_stream(routed_stream):
-            await routed_stream.aclose()
+            await routed_stream._finish("error")
             raise NoHealthyBackendError()
         return routed_stream
 
@@ -248,6 +328,10 @@ class BackendPool:
                 return_exceptions=True,
             )
             await asyncio.gather(*(lease.release() for lease in leases))
+            async with self._lock:
+                for slot in self._slots:
+                    slot.healthy = False
+                self._notify_observer()
 
     async def _probe_loop(self) -> None:
         try:
@@ -289,6 +373,7 @@ class BackendPool:
             self._cursor = (selected_index + 1) % len(self._slots)
             lease = BackendLease(self, slot)
             self._active_leases.add(lease)
+            self._notify_observer()
 
         logger.info(
             "backend selected",
@@ -309,6 +394,7 @@ class BackendPool:
             lease._released = True
             lease._slot.inflight -= 1
             self._active_leases.discard(lease)
+            self._notify_observer()
 
     async def _register_stream(self, stream: RoutedBackendStream) -> bool:
         async with self._lock:
@@ -331,6 +417,7 @@ class BackendPool:
             slot = self._slots_by_id[backend_id]
             previous = slot.healthy
             slot.healthy = healthy
+            self._notify_observer()
 
         if previous is True and not healthy:
             logger.warning(
@@ -347,3 +434,29 @@ class BackendPool:
                 "backend failed initial health probe",
                 extra={"backend_id": backend_id, "backend_healthy": False},
             )
+
+    def _observe_operation(
+        self,
+        backend_id: str,
+        operation: BackendOperation,
+        outcome: BackendOutcome,
+    ) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer.backend_operation_observed(backend_id, operation, outcome)
+        except Exception:
+            logger.warning("backend_pool_observer_error", exc_info=True)
+
+    def _notify_observer(self) -> None:
+        if self._observer is None:
+            return
+        try:
+            self._observer.backend_state_changed(
+                {
+                    slot.backend_id: (slot.healthy is True and not self._closed, slot.inflight)
+                    for slot in self._slots
+                }
+            )
+        except Exception:
+            logger.warning("backend_pool_observer_error", exc_info=True)

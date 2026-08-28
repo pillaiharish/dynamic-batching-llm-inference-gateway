@@ -1,39 +1,45 @@
 # Dynamic Batching LLM Inference Gateway
 
-This repository is the v0.5 milestone of a multi-tenant LLM inference gateway:
+This repository is the v0.6 milestone of a multi-tenant LLM inference gateway:
 
-> Health-aware least-inflight routing across a pool of vLLM backends, with authenticated JSON and
-> SSE Chat Completions, failure isolation, probe-based recovery, and disconnect-safe cleanup.
+> Prometheus observability for request latency, admission queue wait, stream-observed TTFT,
+> authoritative observed output-token throughput, errors, admission state, and per-backend
+> health/inflight, on top of authenticated JSON/SSE inference and health-aware routing.
 
 The gateway currently provides typed environment configuration, JSON request logging, request-ID
 propagation, stable error responses, health/readiness endpoints, and this inference path:
 
 ```text
-                         authenticated request
-                                  │
-                                  ▼
-                            tenant admission
-                                  │
-                                  ▼
-                             BackendPool
-                                  │
-                         filter healthy members
-                                  │
-                  minimum gateway-observed inflight
-                                  │
-                   round-robin among tied candidates
-                                  │
-                ┌─────────────────┼─────────────────┐
-                ▼                 ▼                 ▼
-             vLLM A            vLLM B            vLLM C
-             healthy          unhealthy           healthy
-                ▲                                   ▲
-                └──────── periodic GET /health ─────┘
-                                  │
-                     JSON response or SSE byte relay
-                                  │
-              end/error/disconnect → release both leases
+request received T0
+        │
+        ▼
+auth / validation
+        │
+        ▼
+admission begins TQ ──────────────┐
+        │                         │ queue wait
+        ▼                         │
+admission granted T1 ◀────────────┘
+        │
+        ▼
+health-aware backend routing
+        │
+        ▼
+leaf vLLM HTTP request begins T2
+        │
+        ▼
+first generated-content SSE event T3
+        │
+        ▼
+JSON response / transparent SSE byte relay
+        │
+        ▼
+completion, error, or disconnect T4
 ```
+
+The Prometheus timing contract is `T1−TQ` admission queue wait, `T3−T0` client-visible TTFT,
+`T3−T2` gateway-observed backend TTFT, and `T4−T0` end-to-end request duration. All duration
+timestamps use the monotonic `time.perf_counter()` clock.
 
 ## Supported Chat Completions subset
 
@@ -51,6 +57,8 @@ Supported request fields:
 - `seed` — integer
 - `n` — positive integer, capped by `MAX_CHOICES`; defaults to `1`
 - `stream` — boolean selecting a JSON response (`false`) or SSE relay (`true`); defaults to `false`
+- `stream_options.include_usage` — optional boolean requesting vLLM's final authoritative streaming
+  usage event; `stream_options` is accepted only with `stream=true`
 
 Successful JSON responses from vLLM are returned without discarding OpenAI-compatible extension
 fields. Safe upstream `400`, `404`, and `422` statuses retain their status with a normalized error
@@ -108,7 +116,14 @@ With `stream=false`, the gateway waits for vLLM's complete response and returns 
 Completion. With `stream=true`, it first acquires normal tenant/global admission, opens and validates
 the upstream vLLM response, and then returns `Content-Type: text/event-stream`. Upstream SSE bytes,
 including comments, fragmented events, multiple events per network chunk, and `data: [DONE]`, are
-relayed incrementally without parsing or reconstructing events.
+relayed incrementally without reconstruction. A passive metrics observer receives a copy of those
+bytes; it never changes framing, content, or `[DONE]` and never synthesizes downstream events.
+
+The observer keeps at most 1 MiB for one incomplete event. It understands HTTP-chunk fragmentation
+and coalescing, ignores comments and role-only deltas, and recognizes first generated text only from
+a complete JSON `data:` event with non-empty `choices[*].delta.content`. Malformed or oversized
+events disable parsing for that stream while byte relay continues unchanged. Event content is not
+logged on parser failure.
 
 The streaming admission lease and selected backend's routing inflight assignment both remain held
 until the downstream response ends or is cancelled. A client disconnect stops consumption, closes
@@ -163,6 +178,188 @@ independent limits; no counters or queues are shared. Admission protects backend
 gateway layer and is not GPU-aware, KV-cache-aware, token-budget-aware, or connected to the vLLM
 scheduler.
 
+## Prometheus observability
+
+`GET /metrics` exposes the application's own `prometheus-client` `CollectorRegistry` using the
+Prometheus text content type. The endpoint is unauthenticated for ordinary scraping and is excluded
+from inference request metrics. Production deployments should network-restrict this observability
+endpoint as appropriate. `/healthz` and `/readyz` are also excluded from the focused inference
+request families.
+
+Every application instance owns an isolated registry, so tests and multiple in-process app objects
+cannot duplicate or leak collector state. Metrics updates are synchronous, in-memory observations;
+they perform no remote calls or disk writes. The passive SSE parser fails open so an observability
+failure cannot become an inference failure.
+
+### Timing contract
+
+| Timestamp | Definition |
+| --- | --- |
+| `T0` | Gateway receives the HTTP request, before validation or authentication |
+| `TQ` | Request begins waiting for `AdmissionController` |
+| `T1` | Admission lease is granted |
+| `T2` | Selected leaf vLLM backend begins the upstream HTTP request |
+| `T3` | Gateway observes the first SSE event containing non-empty generated assistant content |
+| `T4` | Downstream request/stream lifecycle ends, including disconnect or error |
+
+| Metric | Meaning |
+| --- | --- |
+| Request duration | `T4−T0` |
+| Admission queue wait | `T1−TQ`, or wait until a failed acquire |
+| Client-visible TTFT | `T3−T0` |
+| Backend-observed TTFT | `T3−T2` |
+| Observed output TPS | Prometheus `rate()` of authoritative `completion_tokens` |
+
+Request duration covers the full streaming body lifecycle, not just response-header creation.
+Backend TTFT includes gateway-observed backend HTTP, vLLM waiting, and prefill until content becomes
+observable; it is not described as GPU-execution-only time.
+
+Gateway TTFT is stream-observed TTFT. Non-streaming requests do not produce a gateway TTFT
+observation because the gateway receives the completed response only after generation finishes.
+The first HTTP/TCP chunk, SSE comment, role-only delta, and `[DONE]` do not end TTFT. Histograms use
+explicit inference-oriented seconds buckets; the TTFT buckets include `0.8` seconds for later
+800-ms SLA experiments. Percentiles are calculated with PromQL rather than inside the gateway.
+
+### Token accounting and TPS
+
+`gateway_observed_output_tokens_total` is a cumulative counter. The gateway increments it only from
+a valid, non-negative integer `usage.completion_tokens` in a successful non-streaming JSON response
+or passively observed streaming usage event. SSE event count, delta count, characters, whitespace,
+bytes, and HTTP chunks are never treated as tokens.
+
+For streaming requests, clients that need complete accounting should request authoritative usage:
+
+```json
+{
+  "stream": true,
+  "stream_options": {
+    "include_usage": true
+  }
+}
+```
+
+The gateway does not silently add this option. Without a final usage event, the stream remains
+transparent and token coverage is recorded as `missing`; malformed usage is `invalid`. The
+`gateway_token_accounting_requests_total{mode,result}` counter makes this partial coverage visible.
+
+TPS means **observed generated output tokens per second**. It does not mean HTTP requests, SSE
+chunks, characters, or bytes per second. No application-side instantaneous TPS gauge exists; use:
+
+```promql
+sum(rate(gateway_observed_output_tokens_total[1m]))
+```
+
+The unit is generated output tokens/second, and the result is only as complete as the accompanying
+authoritative token-accounting coverage.
+
+### Metric families and bounded labels
+
+| Metric family | Labels |
+| --- | --- |
+| `gateway_requests_total` | `mode`, `status_code`, `outcome` |
+| `gateway_request_duration_seconds` | `mode`, `outcome` |
+| `gateway_admission_queue_wait_seconds` | `outcome` |
+| `gateway_client_ttft_seconds` | `backend_id` |
+| `gateway_backend_ttft_seconds` | `backend_id` |
+| `gateway_ttft_observations_total` | `result` |
+| `gateway_observed_output_tokens_total` | `mode` |
+| `gateway_token_accounting_requests_total` | `mode`, `result` |
+| `gateway_errors_total` | `code` |
+| `gateway_admission_inflight`, `gateway_admission_queued` | none |
+| `gateway_tenant_admission_inflight`, `gateway_tenant_admission_queued` | `tenant_id` |
+| `gateway_backend_healthy`, `gateway_backend_inflight` | `backend_id` |
+| `gateway_backend_requests_total` | `backend_id`, `operation`, `outcome` |
+
+`mode`, lifecycle outcomes, operation, accounting result, HTTP status (or `unknown` when no response
+status was sent), and stable error code come from small controlled sets. Backend and tenant IDs are
+bounded by static configuration, with a singleton `unknown` backend fallback for injected streams
+that provide no metadata; metric cardinality therefore scales with configured backends and tenants.
+Request IDs, API keys,
+authorization headers, prompts, generated content, raw URLs, arbitrary client model names, and
+exception messages are never labels.
+
+`gateway_errors_total` owns client-visible gateway lifecycle failures. A mid-stream upstream error,
+which occurs after HTTP 200 can no longer change, is counted once as `stream_upstream_error`.
+`gateway_backend_requests_total` separately owns the selected leaf operation's full outcome;
+`operation="stream", outcome="success"` means normal stream completion, not merely successful
+response opening.
+
+Admission gauges are updated on controller acquire, queue, dispatch, timeout, cancellation, release,
+and shutdown transitions. Backend gauges are updated on initial probe, health loss/recovery,
+selection, release, stream completion/disconnect, and pool close. They observe the real scheduling
+and routing state rather than polling snapshots during a scrape. `gateway_backend_healthy` uses
+`1` for healthy and `0` for unhealthy.
+
+### PromQL examples
+
+Request rate:
+
+```promql
+sum(rate(gateway_requests_total[1m]))
+```
+
+Request p95:
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le) (rate(gateway_request_duration_seconds_bucket[5m]))
+)
+```
+
+Queue-wait p95:
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le) (rate(gateway_admission_queue_wait_seconds_bucket[5m]))
+)
+```
+
+Client TTFT p95:
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (le) (rate(gateway_client_ttft_seconds_bucket[5m]))
+)
+```
+
+Backend TTFT p95 by backend:
+
+```promql
+histogram_quantile(
+  0.95,
+  sum by (backend_id, le) (rate(gateway_backend_ttft_seconds_bucket[5m]))
+)
+```
+
+Errors by stable code:
+
+```promql
+sum by (code) (rate(gateway_errors_total[5m]))
+```
+
+Token-accounting coverage:
+
+```promql
+sum by (mode, result) (
+  rate(gateway_token_accounting_requests_total[5m])
+)
+```
+
+The scrape example is in `observability/prometheus/prometheus.yml`; the static Grafana dashboard is
+in `observability/grafana/dashboards/gateway-overview.json`. Histograms are used instead of
+client-side quantile summaries so replicas can be aggregated later and p50/p95/p99 can be selected
+at query time.
+
+PR6 does not configure `prometheus-client` multiprocess mode. Metrics represent one gateway process,
+matching the current process-local admission and routing architecture. If the gateway later runs
+with multiple worker processes, aggregation semantics—especially gauges—must be revisited. The
+gateway does not expose synthetic GPU, KV-cache, or vLLM scheduler metrics and does not scrape
+backend `/metrics`; Prometheus can scrape those authoritative sources separately in a later
+deployment.
+
 ## Local development
 
 Python 3.11 or newer is required.
@@ -186,6 +383,7 @@ Check gateway health:
 ```bash
 curl http://localhost:8080/healthz
 curl http://localhost:8080/readyz
+curl http://localhost:8080/metrics
 ```
 
 Forward a non-streaming completion to vLLM:
@@ -215,6 +413,7 @@ curl -N http://localhost:8080/v1/chat/completions \
       {"role": "user", "content": "Count from one to five slowly."}
     ],
     "stream": true,
+    "stream_options": {"include_usage": true},
     "max_tokens": 64
   }'
 ```
@@ -257,11 +456,11 @@ python -m pip check
 ## Docker
 
 ```bash
-docker build -t inference-gateway:v0.5 .
+docker build -t inference-gateway:v0.6 .
 docker run --rm -p 8080:8080 \
   -e 'BACKENDS_JSON={"local":{"base_url":"http://host.docker.internal:8000"}}' \
   -e 'TENANTS_JSON={"local":{"api_key":"local-example-key","max_inflight":2,"max_queue":4}}' \
-  inference-gateway:v0.5
+  inference-gateway:v0.6
 ```
 
 The image runs as a non-root user. No vLLM server or GPU stack is bundled into the image.
@@ -269,7 +468,7 @@ The image runs as a non-root user. No vLLM server or GPU stack is bundled into t
 ## Routing limitations
 
 Routing health and inflight state are process-local and are not shared between gateway replicas.
-Configured backends are assumed interchangeable for the models exposed through this gateway; v0.5
+Configured backends are assumed interchangeable for the models exposed through this gateway; v0.6
 does not route by model or LoRA adapter. Backend inflight means requests assigned by this gateway
 whose backend operation has not finished. It is not vLLM scheduler state, GPU utilization, KV-cache
 occupancy, prefix-cache affinity, token load, latency, or a prediction of backend capacity. Health is
@@ -278,8 +477,11 @@ No generation request is automatically retried on another member.
 
 ## Not implemented
 
-The v0.5 API does not support WebSockets, stream reconnection/resume, automatic generation retries,
+The v0.6 API does not support WebSockets, stream reconnection/resume, automatic generation retries,
 gateway dynamic batching, tools/function calls, multimodal content, structured outputs, RPS
 limiting, token/billing quotas, JWT/OAuth, persistent tenants, model/GPU/KV/token/cache-aware or
-predictive routing, Prometheus, TTFT/TPS metrics, Grafana, a benchmark harness, Redis/distributed
-admission or routing state, databases, Docker Compose, Kubernetes, Terraform, or autoscaling.
+predictive routing, benchmark traffic generation, automatic performance reports, GPU/NVML/DCGM
+metrics, vLLM `/metrics` federation, OpenTelemetry, tracing/exemplars, push metrics, alert rules,
+Redis/distributed admission or routing state, databases, Docker Compose, Kubernetes, Terraform, or
+autoscaling. The included Prometheus scrape configuration and Grafana dashboard are static examples,
+not runtime dependencies.
