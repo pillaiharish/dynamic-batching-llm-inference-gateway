@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynamic-batching-llm-inference-gateway"
-description = "OpenAI-compatible FastAPI gateway for non-streaming vLLM inference"
+description = "OpenAI-compatible FastAPI gateway for authenticated streaming vLLM inference"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

@@ -1,7 +1,20 @@
-"""Backend-neutral inference contract."""
+"""Backend-neutral inference contracts."""
 
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
+
+
+@runtime_checkable
+class BackendStream(Protocol):
+    """An opened incremental backend response with explicit cleanup."""
+
+    def __aiter__(self) -> AsyncIterator[bytes]:
+        """Yield response bytes without imposing event boundaries."""
+        ...
+
+    async def aclose(self) -> None:
+        """Close the upstream response and release its connection."""
+        ...
 
 
 @runtime_checkable
@@ -12,8 +25,8 @@ class InferenceBackend(Protocol):
         """Generate one complete response."""
         ...
 
-    def stream(self, request: Any) -> AsyncIterator[Any]:
-        """Stream response chunks for one request."""
+    async def stream(self, request: Any) -> BackendStream:
+        """Open one streaming response before downstream headers are sent."""
         ...
 
     async def generate_batch(self, requests: list[Any]) -> list[Any]:

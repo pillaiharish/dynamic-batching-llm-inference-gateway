@@ -1,19 +1,38 @@
 # Dynamic Batching LLM Inference Gateway
 
-This repository is the v0.3 milestone of a multi-tenant LLM inference gateway:
+This repository is the v0.4 milestone of a multi-tenant LLM inference gateway:
 
-> FastAPI OpenAI Chat Completions-compatible inference gateway with authenticated tenants and
-> bounded per-tenant/global concurrency and queue limits.
+> OpenAI Chat Completions-compatible gateway supporting authenticated non-streaming requests and
+> transparent SSE streaming to vLLM with admission control and disconnect-safe resource cleanup.
 
 The gateway currently provides typed environment configuration, JSON request logging, request-ID
 propagation, stable error responses, health/readiness endpoints, and this inference path:
 
 ```text
-                         Tenant A queue ─┐
-client → bearer auth →  Tenant B queue ─┼→ fair admission → pooled async HTTP → vLLM
-                         Tenant C queue ─┘
+                         authenticated request
                                   │
-                            global limits
+                                  ▼
+                            tenant admission
+                                  │
+                      ┌───────────┴───────────┐
+                      │                       │
+                stream=false             stream=true
+                      │                       │
+                      ▼                       ▼
+                 generate()              open SSE stream
+                      │                       │
+                      └───────────┬───────────┘
+                                  ▼
+                                 vLLM
+                                  │
+                        SSE bytes │ stream=true
+                                  ▼
+                       incremental byte relay
+                                  │
+                   end/error/disconnect → close upstream
+                                  │
+                                  ▼
+                         release admission lease
 ```
 
 ## Supported Chat Completions subset
@@ -31,13 +50,34 @@ Supported request fields:
 - `stop` — a non-empty string or list of non-empty strings
 - `seed` — integer
 - `n` — positive integer, capped by `MAX_CHOICES`; defaults to `1`
-- `stream` — must be `false`; defaults to `false`
+- `stream` — boolean selecting a JSON response (`false`) or SSE relay (`true`); defaults to `false`
 
 Successful JSON responses from vLLM are returned without discarding OpenAI-compatible extension
 fields. Safe upstream `400`, `404`, and `422` statuses retain their status with a normalized error
 body. Backend connection failures return `503`, timeouts return `504`, and invalid responses or
 other upstream failures return `502`. Upstream `401` and `403` responses are treated as backend
 configuration failures, not gateway-client authentication failures.
+
+## Streaming behavior
+
+With `stream=false`, the gateway waits for vLLM's complete response and returns one JSON Chat
+Completion. With `stream=true`, it first acquires normal tenant/global admission, opens and validates
+the upstream vLLM response, and then returns `Content-Type: text/event-stream`. Upstream SSE bytes,
+including comments, fragmented events, multiple events per network chunk, and `data: [DONE]`, are
+relayed incrementally without parsing or reconstructing events.
+
+The streaming admission lease remains held until the downstream response ends or is cancelled. A
+client disconnect stops consumption, closes the upstream HTTP stream so vLLM can observe that
+disconnect, and releases gateway admission. This does not claim immediate GPU-kernel cancellation.
+
+Failures discovered while opening the upstream response remain normal JSON errors: connection
+failures return `503`, timeouts return `504`, safe request rejections retain their mapped client
+status, and incompatible streaming responses return `502`. Once SSE bytes have begun, the gateway
+cannot change the HTTP status; a mid-stream upstream failure closes the stream, logs safe lifecycle
+metadata, and releases resources. Generation is never retried automatically because replaying after
+tokens were delivered could duplicate or diverge output.
+
+Streaming requests use the direct backend path and will bypass future gateway dynamic batching.
 
 ## Tenant authentication
 
@@ -115,6 +155,32 @@ curl http://localhost:8080/v1/chat/completions \
   }'
 ```
 
+Relay a streaming completion incrementally (`-N` disables curl output buffering):
+
+```bash
+curl -N http://localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <tenant-api-key>' \
+  -d '{
+    "model": "<served-model>",
+    "messages": [
+      {"role": "user", "content": "Count from one to five slowly."}
+    ],
+    "stream": true,
+    "max_tokens": 64
+  }'
+```
+
+Expected output arrives as vLLM produces it and ends with the upstream sentinel:
+
+```text
+data: {...}
+
+data: {...}
+
+data: [DONE]
+```
+
 An official OpenAI-style client can use its `api_key` value as the tenant bearer credential:
 
 ```python
@@ -126,6 +192,8 @@ response = client.chat.completions.create(
     messages=[{"role": "user", "content": "Hello"}],
 )
 ```
+
+Pass `stream=True` to the same SDK call to consume the proxied streaming response.
 
 The OpenAI SDK is not a project dependency; CI exercises the wire contract directly.
 
@@ -141,18 +209,19 @@ python -m pip check
 ## Docker
 
 ```bash
-docker build -t inference-gateway:v0.3 .
+docker build -t inference-gateway:v0.4 .
 docker run --rm -p 8080:8080 \
   -e VLLM_BASE_URL=http://host.docker.internal:8000 \
   -e 'TENANTS_JSON={"local":{"api_key":"local-example-key","max_inflight":2,"max_queue":4}}' \
-  inference-gateway:v0.3
+  inference-gateway:v0.4
 ```
 
 The image runs as a non-root user. No vLLM server or GPU stack is bundled into the image.
 
 ## Not implemented
 
-The v0.3 API does not support `stream=true`, tools/function calls, multimodal content, structured
-outputs, RPS limiting, token/billing quotas, JWT/OAuth, persistent tenants, dynamic batching,
-multi-backend pools/routing/failover, backend health probing, Prometheus, Grafana, a benchmark
-harness, Redis/distributed admission, databases, Docker Compose, Kubernetes, or Terraform.
+The v0.4 API does not support WebSockets, stream reconnection/resume, automatic generation retries,
+gateway dynamic batching, tools/function calls, multimodal content, structured outputs, RPS
+limiting, token/billing quotas, JWT/OAuth, persistent tenants, multi-backend pools/routing/failover,
+backend health probing, Prometheus, TTFT/TPS metrics, Grafana, a benchmark harness,
+Redis/distributed admission, databases, Docker Compose, Kubernetes, or Terraform.

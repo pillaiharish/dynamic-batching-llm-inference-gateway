@@ -22,7 +22,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    """The explicitly supported v0.2 Chat Completions request fields."""
+    """The explicitly supported Chat Completions request fields."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -34,7 +34,7 @@ class ChatCompletionRequest(BaseModel):
     stop: str | list[str] | None = None
     seed: int | None = None
     n: int = Field(default=1, gt=0)
-    stream: Literal[False] = False
+    stream: bool = False
 
     @field_validator("model")
     @classmethod

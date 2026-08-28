@@ -1,11 +1,10 @@
-from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
 from gateway.app import create_app
-from gateway.backends.base import InferenceBackend
+from gateway.backends.base import BackendStream, InferenceBackend
 from gateway.backends.fake import FakeBackend
 from gateway.config import Settings
 from gateway.core.errors import BackendTimeoutError
@@ -78,7 +77,7 @@ class ResponseBackend:
     async def generate(self, _request: Any) -> dict[str, Any]:
         return self.response
 
-    def stream(self, _request: Any) -> AsyncIterator[Any]:
+    async def stream(self, _request: Any) -> BackendStream:
         raise NotImplementedError
 
     async def generate_batch(self, _requests: list[Any]) -> list[Any]:
@@ -153,6 +152,8 @@ def test_message_validation(message: dict[str, Any]) -> None:
         ("n", 0),
         ("n", -1),
         ("n", "2"),
+        ("stream", 1),
+        ("stream", "true"),
     ],
 )
 def test_generation_schema_validation(field: str, value: object) -> None:
@@ -188,17 +189,20 @@ def test_configured_generation_limits(
     assert_invalid_request(response, message=expected_message)
 
 
-def test_streaming_is_explicitly_rejected() -> None:
+def test_streaming_chat_completion_returns_sse() -> None:
     with make_client() as client:
         response = client.post(
             "/v1/chat/completions",
             json={**VALID_REQUEST, "stream": True},
+            headers={"X-Request-ID": "stream-request-id"},
         )
 
-    assert_invalid_request(
-        response,
-        message="Streaming chat completions are not supported",
-    )
+    assert response.status_code == 200
+    assert response.headers["Content-Type"] == "text/event-stream"
+    assert response.headers["Cache-Control"] == "no-cache"
+    assert response.headers["X-Accel-Buffering"] == "no"
+    assert response.headers["X-Request-ID"] == "stream-request-id"
+    assert response.content.count(b"data: [DONE]\n\n") == 1
 
 
 def test_unsupported_request_field_is_rejected() -> None:
@@ -244,7 +248,7 @@ class FailOnceBackend:
             raise BackendTimeoutError()
         return await self.fake.generate(_request)
 
-    def stream(self, _request: Any) -> AsyncIterator[Any]:
+    async def stream(self, _request: Any) -> BackendStream:
         raise NotImplementedError
 
     async def generate_batch(self, _requests: list[Any]) -> list[Any]:
