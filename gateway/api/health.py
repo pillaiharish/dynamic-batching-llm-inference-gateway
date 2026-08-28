@@ -23,8 +23,12 @@ async def health() -> HealthResponse:
     responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": HealthResponse}},
 )
 async def readiness(request: Request) -> HealthResponse | JSONResponse:
-    """Report whether gateway initialization completed successfully."""
-    if not getattr(request.app.state, "ready", False):
+    """Report whether initialization completed and inference is routable."""
+    ready = getattr(request.app.state, "ready", False)
+    backend_pool = getattr(request.app.state, "backend_pool", None)
+    if ready and backend_pool is not None:
+        ready = await backend_pool.is_routable()
+    if not ready:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "not_ready"},

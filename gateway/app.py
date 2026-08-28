@@ -18,6 +18,7 @@ from gateway.config import Settings
 from gateway.core.errors import register_exception_handlers
 from gateway.core.logging import configure_logging
 from gateway.core.request_id import install_request_id_middleware
+from gateway.routing.pool import BackendPool
 
 
 def create_app(
@@ -48,12 +49,34 @@ def create_app(
                 queue_timeout_seconds=app_settings.admission_queue_timeout_seconds,
             )
         )
-        active_backend = backend if backend is not None else VLLMBackend(app_settings)
+        if backend is None:
+            leaf_backends = {
+                backend_id: VLLMBackend(
+                    backend_id,
+                    backend_config,
+                    connect_timeout_seconds=app_settings.vllm_connect_timeout_seconds,
+                    request_timeout_seconds=app_settings.vllm_request_timeout_seconds,
+                    health_timeout_seconds=app_settings.backend_health_timeout_seconds,
+                )
+                for backend_id, backend_config in app_settings.backends_json.items()
+            }
+            active_backend: InferenceBackend = BackendPool(
+                leaf_backends,
+                health_interval_seconds=app_settings.backend_health_interval_seconds,
+                health_timeout_seconds=app_settings.backend_health_timeout_seconds,
+            )
+        else:
+            active_backend = backend
+
+        active_pool = active_backend if isinstance(active_backend, BackendPool) else None
         app.state.tenant_registry = active_registry
         app.state.admission_controller = active_admission
         app.state.backend = active_backend
-        app.state.ready = True
+        app.state.backend_pool = active_pool
         try:
+            if active_pool is not None:
+                await active_pool.start()
+            app.state.ready = True
             yield
         finally:
             app.state.ready = False
@@ -65,6 +88,7 @@ def create_app(
     application = FastAPI(title=app_settings.app_name, version=__version__, lifespan=lifespan)
     application.state.settings = app_settings
     application.state.ready = False
+    application.state.backend_pool = None
 
     install_request_id_middleware(
         application,

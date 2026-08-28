@@ -1,9 +1,9 @@
 # Dynamic Batching LLM Inference Gateway
 
-This repository is the v0.4 milestone of a multi-tenant LLM inference gateway:
+This repository is the v0.5 milestone of a multi-tenant LLM inference gateway:
 
-> OpenAI Chat Completions-compatible gateway supporting authenticated non-streaming requests and
-> transparent SSE streaming to vLLM with admission control and disconnect-safe resource cleanup.
+> Health-aware least-inflight routing across a pool of vLLM backends, with authenticated JSON and
+> SSE Chat Completions, failure isolation, probe-based recovery, and disconnect-safe cleanup.
 
 The gateway currently provides typed environment configuration, JSON request logging, request-ID
 propagation, stable error responses, health/readiness endpoints, and this inference path:
@@ -14,25 +14,25 @@ propagation, stable error responses, health/readiness endpoints, and this infere
                                   ▼
                             tenant admission
                                   │
-                      ┌───────────┴───────────┐
-                      │                       │
-                stream=false             stream=true
-                      │                       │
-                      ▼                       ▼
-                 generate()              open SSE stream
-                      │                       │
-                      └───────────┬───────────┘
                                   ▼
-                                 vLLM
+                             BackendPool
                                   │
-                        SSE bytes │ stream=true
-                                  ▼
-                       incremental byte relay
+                         filter healthy members
                                   │
-                   end/error/disconnect → close upstream
+                  minimum gateway-observed inflight
                                   │
-                                  ▼
-                         release admission lease
+                   round-robin among tied candidates
+                                  │
+                ┌─────────────────┼─────────────────┐
+                ▼                 ▼                 ▼
+             vLLM A            vLLM B            vLLM C
+             healthy          unhealthy           healthy
+                ▲                                   ▲
+                └──────── periodic GET /health ─────┘
+                                  │
+                     JSON response or SSE byte relay
+                                  │
+              end/error/disconnect → release both leases
 ```
 
 ## Supported Chat Completions subset
@@ -58,6 +58,50 @@ body. Backend connection failures return `503`, timeouts return `504`, and inval
 other upstream failures return `502`. Upstream `401` and `403` responses are treated as backend
 configuration failures, not gateway-client authentication failures.
 
+## Backend routing and health
+
+Production backends are configured through one typed `BACKENDS_JSON` mapping. The mapping key is a
+non-blank, unique backend ID; each value contains an HTTP(S) `base_url` and an optional secret
+`api_key`:
+
+```json
+{
+  "gpu-a": {
+    "base_url": "http://vllm-a:8000",
+    "api_key": "backend-a-secret"
+  },
+  "gpu-b": {
+    "base_url": "http://vllm-b:8000"
+  }
+}
+```
+
+Each member owns its own long-lived pooled HTTP client. Startup probes every member concurrently,
+then one pool-owned task repeats `GET /health` at `BACKEND_HEALTH_INTERVAL_SECONDS`; each call is
+bounded by `BACKEND_HEALTH_TIMEOUT_SECONDS`. Health traffic does not use inference admission or
+backend inflight. Connection failures, timeouts, and non-2xx health responses mark only that member
+unhealthy. A later successful probe restores it to the routing candidates. The process can start
+with only a subset healthy, but at least one backend must be configured.
+
+For every admitted operation the pool first filters healthy backends, finds the minimum
+gateway-observed inflight count, then uses a deterministic rotating cursor among only those tied
+candidates. In configured order, sequential equal-load assignments rotate `A → B → C → A`. The
+selection and inflight increment occur under one lock. Non-streaming operations release their
+backend assignment in `finally`; streaming operations retain it until the routed stream reaches
+EOF, fails, is closed, or is cancelled.
+
+Backend-origin connection, timeout, HTTP, authentication/configuration, or protocol failures mark
+the selected member unhealthy so future requests avoid it. Client-controlled `400`, `404`, and
+`422` request rejections do not eject a backend. No failed generation is automatically replayed on
+another backend, even before output, because the gateway cannot prove that upstream work never
+started. This is failure isolation and future-request routing, not transparent generation failover.
+
+`/healthz` is process liveness and remains healthy while the gateway is alive. `/readyz` is
+routability: it returns `200 {"status":"ready"}` only after initialization and while at least one
+production-pool backend is healthy; otherwise it returns `503 {"status":"not_ready"}`. When no
+backend is healthy, admitted JSON and streaming requests fail before generation with the stable
+JSON error `503 no_healthy_backend` and preserve their request ID.
+
 ## Streaming behavior
 
 With `stream=false`, the gateway waits for vLLM's complete response and returns one JSON Chat
@@ -66,9 +110,11 @@ the upstream vLLM response, and then returns `Content-Type: text/event-stream`. 
 including comments, fragmented events, multiple events per network chunk, and `data: [DONE]`, are
 relayed incrementally without parsing or reconstructing events.
 
-The streaming admission lease remains held until the downstream response ends or is cancelled. A
-client disconnect stops consumption, closes the upstream HTTP stream so vLLM can observe that
-disconnect, and releases gateway admission. This does not claim immediate GPU-kernel cancellation.
+The streaming admission lease and selected backend's routing inflight assignment both remain held
+until the downstream response ends or is cancelled. A client disconnect stops consumption, closes
+the upstream HTTP stream so vLLM can observe that disconnect, and releases both ownership records.
+Client cancellation does not mark the selected backend unhealthy. This does not claim immediate
+GPU-kernel cancellation.
 
 Failures discovered while opening the upstream response remain normal JSON errors: connection
 failures return `503`, timeouts return `504`, safe request rejections retain their mapped client
@@ -86,8 +132,9 @@ remain unauthenticated. Tenants are configured through `TENANTS_JSON`, where eac
 unique secret API key, `max_inflight`, and `max_queue` value. Missing, malformed, or unknown
 credentials return the same safe `401 unauthorized` response with `WWW-Authenticate: Bearer`.
 
-Tenant keys authenticate client → gateway traffic. `VLLM_API_KEY` separately authenticates gateway
-→ vLLM traffic. Client authorization is never forwarded upstream, and neither credential is logged.
+Tenant keys authenticate client → gateway traffic. Each optional `BACKENDS_JSON` `api_key`
+separately authenticates gateway → vLLM traffic for only that member. Client authorization is never
+forwarded upstream, and neither credential type is logged.
 
 ## Admission semantics
 
@@ -128,10 +175,11 @@ cp .env.example .env
 python -m uvicorn gateway.app:app --host 0.0.0.0 --port 8080
 ```
 
-Configure `VLLM_BASE_URL` for the trusted OpenAI-compatible vLLM server. If that server requires
-authentication, set `VLLM_API_KEY`; the key is sent only to the configured backend and is never
+Configure one or more trusted, model-compatible OpenAI-compatible vLLM servers through
+`BACKENDS_JSON`. A member's optional `api_key` is sent only to that configured backend and is never
 accepted from a client request. Configure safe local tenant credentials through `TENANTS_JSON` and
-adjust global admission bounds only as needed. All settings are documented in `.env.example`.
+adjust global admission and health timing only as needed. All settings are documented in
+`.env.example`.
 
 Check gateway health:
 
@@ -209,19 +257,29 @@ python -m pip check
 ## Docker
 
 ```bash
-docker build -t inference-gateway:v0.4 .
+docker build -t inference-gateway:v0.5 .
 docker run --rm -p 8080:8080 \
-  -e VLLM_BASE_URL=http://host.docker.internal:8000 \
+  -e 'BACKENDS_JSON={"local":{"base_url":"http://host.docker.internal:8000"}}' \
   -e 'TENANTS_JSON={"local":{"api_key":"local-example-key","max_inflight":2,"max_queue":4}}' \
-  inference-gateway:v0.4
+  inference-gateway:v0.5
 ```
 
 The image runs as a non-root user. No vLLM server or GPU stack is bundled into the image.
 
+## Routing limitations
+
+Routing health and inflight state are process-local and are not shared between gateway replicas.
+Configured backends are assumed interchangeable for the models exposed through this gateway; v0.5
+does not route by model or LoRA adapter. Backend inflight means requests assigned by this gateway
+whose backend operation has not finished. It is not vLLM scheduler state, GPU utilization, KV-cache
+occupancy, prefix-cache affinity, token load, latency, or a prediction of backend capacity. Health is
+the result of HTTP `/health` probes plus simple immediate ejection on typed backend-origin failures.
+No generation request is automatically retried on another member.
+
 ## Not implemented
 
-The v0.4 API does not support WebSockets, stream reconnection/resume, automatic generation retries,
+The v0.5 API does not support WebSockets, stream reconnection/resume, automatic generation retries,
 gateway dynamic batching, tools/function calls, multimodal content, structured outputs, RPS
-limiting, token/billing quotas, JWT/OAuth, persistent tenants, multi-backend pools/routing/failover,
-backend health probing, Prometheus, TTFT/TPS metrics, Grafana, a benchmark harness,
-Redis/distributed admission, databases, Docker Compose, Kubernetes, or Terraform.
+limiting, token/billing quotas, JWT/OAuth, persistent tenants, model/GPU/KV/token/cache-aware or
+predictive routing, Prometheus, TTFT/TPS metrics, Grafana, a benchmark harness, Redis/distributed
+admission or routing state, databases, Docker Compose, Kubernetes, Terraform, or autoscaling.

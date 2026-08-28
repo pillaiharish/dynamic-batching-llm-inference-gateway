@@ -4,12 +4,45 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, SecretStr, TypeAdapter, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from gateway.auth.tenants import TenantConfig
 
 _http_url_adapter = TypeAdapter(AnyHttpUrl)
+
+
+class BackendConfig(BaseModel):
+    """Connection settings for one trusted vLLM backend."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    base_url: str
+    api_key: SecretStr | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def validate_base_url(cls, value: str) -> str:
+        """Require HTTP(S) and normalize trailing slashes."""
+        validated_url = _http_url_adapter.validate_python(value)
+        return str(validated_url).rstrip("/")
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def normalize_empty_api_key(cls, value: object) -> object:
+        """Treat an empty environment value as an unconfigured API key."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class Settings(BaseSettings):
@@ -28,10 +61,15 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", min_length=1)
     port: int = Field(default=8080, ge=1, le=65535)
     request_id_header: str = Field(default="X-Request-ID", min_length=1)
-    vllm_base_url: str = "http://localhost:8000"
-    vllm_api_key: SecretStr | None = None
+    backends_json: dict[str, BackendConfig] = Field(
+        default_factory=lambda: {
+            "default": BackendConfig(base_url="http://localhost:8000"),
+        }
+    )
     vllm_connect_timeout_seconds: float = Field(default=5.0, gt=0)
     vllm_request_timeout_seconds: float = Field(default=120.0, gt=0)
+    backend_health_interval_seconds: float = Field(default=5.0, gt=0)
+    backend_health_timeout_seconds: float = Field(default=2.0, gt=0)
     max_completion_tokens: int = Field(default=4096, gt=0)
     max_choices: int = Field(default=4, gt=0)
     tenants_json: dict[str, TenantConfig] = Field(default_factory=dict)
@@ -57,24 +95,15 @@ class Settings(BaseSettings):
             raise ValueError("must be a valid HTTP header name")
         return value
 
-    @field_validator("vllm_base_url")
-    @classmethod
-    def validate_vllm_base_url(cls, value: str) -> str:
-        """Validate an HTTP URL and normalize trailing slashes."""
-        validated_url = _http_url_adapter.validate_python(value)
-        return str(validated_url).rstrip("/")
-
-    @field_validator("vllm_api_key", mode="before")
-    @classmethod
-    def normalize_empty_vllm_api_key(cls, value: object) -> object:
-        """Treat an empty environment value as an unconfigured API key."""
-        if isinstance(value, str) and not value.strip():
-            return None
-        return value
-
     @model_validator(mode="after")
-    def validate_tenant_mapping(self) -> Settings:
-        """Require safe tenant IDs and a one-to-one API-key mapping."""
+    def validate_mappings(self) -> Settings:
+        """Require safe backend/tenant IDs and a one-to-one tenant key mapping."""
+        if not self.backends_json:
+            raise ValueError("at least one backend must be configured")
+        for backend_id in self.backends_json:
+            if not backend_id.strip():
+                raise ValueError("backend IDs must not be blank")
+
         seen_api_keys: set[str] = set()
         for tenant_id, tenant in self.tenants_json.items():
             if not tenant_id.strip():

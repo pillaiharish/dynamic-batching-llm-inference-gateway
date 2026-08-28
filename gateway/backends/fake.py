@@ -74,6 +74,9 @@ class FakeBackend:
     async def generate_batch(self, requests: list[Any]) -> list[dict[str, Any]]:
         return [await self.generate(request) for request in requests]
 
+    async def check_health(self) -> bool:
+        return not self.closed
+
     async def close(self) -> None:
         if self.last_stream is not None:
             await self.last_stream.aclose()

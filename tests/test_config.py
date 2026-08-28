@@ -10,10 +10,13 @@ SETTING_NAMES = (
     "HOST",
     "PORT",
     "REQUEST_ID_HEADER",
+    "BACKENDS_JSON",
     "VLLM_BASE_URL",
     "VLLM_API_KEY",
     "VLLM_CONNECT_TIMEOUT_SECONDS",
     "VLLM_REQUEST_TIMEOUT_SECONDS",
+    "BACKEND_HEALTH_INTERVAL_SECONDS",
+    "BACKEND_HEALTH_TIMEOUT_SECONDS",
     "MAX_COMPLETION_TOKENS",
     "MAX_CHOICES",
     "TENANTS_JSON",
@@ -38,10 +41,13 @@ def test_settings_defaults() -> None:
     assert settings.host == "0.0.0.0"
     assert settings.port == 8080
     assert settings.request_id_header == "X-Request-ID"
-    assert settings.vllm_base_url == "http://localhost:8000"
-    assert settings.vllm_api_key is None
+    assert set(settings.backends_json) == {"default"}
+    assert settings.backends_json["default"].base_url == "http://localhost:8000"
+    assert settings.backends_json["default"].api_key is None
     assert settings.vllm_connect_timeout_seconds == 5.0
     assert settings.vllm_request_timeout_seconds == 120.0
+    assert settings.backend_health_interval_seconds == 5.0
+    assert settings.backend_health_timeout_seconds == 2.0
     assert settings.max_completion_tokens == 4096
     assert settings.max_choices == 4
     assert settings.tenants_json == {}
@@ -54,8 +60,14 @@ def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("APP_NAME", "test-gateway")
     monkeypatch.setenv("LOG_LEVEL", "debug")
     monkeypatch.setenv("PORT", "9090")
-    monkeypatch.setenv("VLLM_BASE_URL", "https://vllm.example.test/api/")
-    monkeypatch.setenv("VLLM_API_KEY", "backend-secret")
+    monkeypatch.setenv(
+        "BACKENDS_JSON",
+        '{"gpu-a":{"base_url":"https://vllm-a.example.test/api/",'
+        '"api_key":"backend-secret"},'
+        '"gpu-b":{"base_url":"http://vllm-b.example.test:8000"}}',
+    )
+    monkeypatch.setenv("BACKEND_HEALTH_INTERVAL_SECONDS", "3")
+    monkeypatch.setenv("BACKEND_HEALTH_TIMEOUT_SECONDS", "1")
     monkeypatch.setenv("MAX_COMPLETION_TOKENS", "2048")
     monkeypatch.setenv("MAX_CHOICES", "2")
     monkeypatch.setenv(
@@ -71,9 +83,13 @@ def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.app_name == "test-gateway"
     assert settings.log_level == "DEBUG"
     assert settings.port == 9090
-    assert settings.vllm_base_url == "https://vllm.example.test/api"
-    assert settings.vllm_api_key is not None
-    assert settings.vllm_api_key.get_secret_value() == "backend-secret"
+    assert set(settings.backends_json) == {"gpu-a", "gpu-b"}
+    assert settings.backends_json["gpu-a"].base_url == "https://vllm-a.example.test/api"
+    assert settings.backends_json["gpu-a"].api_key is not None
+    assert settings.backends_json["gpu-a"].api_key.get_secret_value() == "backend-secret"
+    assert settings.backends_json["gpu-b"].api_key is None
+    assert settings.backend_health_interval_seconds == 3.0
+    assert settings.backend_health_timeout_seconds == 1.0
     assert settings.max_completion_tokens == 2048
     assert settings.max_choices == 2
     assert set(settings.tenants_json) == {"tenant-a"}
@@ -101,10 +117,10 @@ def test_invalid_request_id_header_fails_validation(invalid_header: str) -> None
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("vllm_base_url", "ftp://vllm.example.test"),
-        ("vllm_base_url", "not-a-url"),
         ("vllm_connect_timeout_seconds", 0),
         ("vllm_request_timeout_seconds", -1),
+        ("backend_health_interval_seconds", 0),
+        ("backend_health_timeout_seconds", -1),
         ("max_completion_tokens", 0),
         ("max_choices", 0),
     ],
@@ -114,10 +130,50 @@ def test_invalid_vllm_settings_fail_validation(field: str, value: object) -> Non
         Settings(_env_file=None, **{field: value})
 
 
-def test_empty_vllm_api_key_is_unconfigured() -> None:
-    settings = Settings(_env_file=None, vllm_api_key="  ")
+def test_empty_backend_api_key_is_unconfigured() -> None:
+    settings = Settings(
+        _env_file=None,
+        backends_json={"gpu-a": {"base_url": "http://vllm-a:8000", "api_key": "  "}},
+    )
 
-    assert settings.vllm_api_key is None
+    assert settings.backends_json["gpu-a"].api_key is None
+
+
+@pytest.mark.parametrize(
+    "backends",
+    [
+        {},
+        {" ": {"base_url": "http://vllm:8000"}},
+        {"gpu-a": {"base_url": "ftp://vllm.example.test"}},
+        {"gpu-a": {"base_url": "not-a-url"}},
+        {"gpu-a": {"base_url": "http://vllm:8000", "unknown": "value"}},
+    ],
+)
+def test_invalid_backend_config_fails_validation(backends: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, backends_json=backends)
+
+
+def test_backend_secrets_are_redacted() -> None:
+    settings = Settings(
+        _env_file=None,
+        backends_json={"gpu-a": {"base_url": "http://vllm-a:8000", "api_key": "backend-secret"}},
+    )
+
+    assert "backend-secret" not in repr(settings)
+
+
+def test_legacy_single_backend_environment_does_not_create_parallel_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VLLM_BASE_URL", "https://legacy-vllm.example.test")
+    monkeypatch.setenv("VLLM_API_KEY", "legacy-secret")
+
+    settings = Settings(_env_file=None)
+
+    assert set(settings.backends_json) == {"default"}
+    assert settings.backends_json["default"].base_url == "http://localhost:8000"
+    assert "legacy-secret" not in repr(settings)
 
 
 def test_valid_multi_tenant_config() -> None:

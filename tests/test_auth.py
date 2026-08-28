@@ -117,10 +117,21 @@ def test_tenant_authorization_is_never_forwarded_to_vllm() -> None:
         )
 
     settings = make_settings(
-        vllm_base_url="https://vllm.example.test",
-        vllm_api_key="backend-secret",
+        backends_json={
+            "upstream": {
+                "base_url": "https://vllm.example.test",
+                "api_key": "backend-secret",
+            }
+        },
     )
-    backend = VLLMBackend(settings, transport=httpx2.MockTransport(handler))
+    backend = VLLMBackend(
+        "upstream",
+        settings.backends_json["upstream"],
+        connect_timeout_seconds=settings.vllm_connect_timeout_seconds,
+        request_timeout_seconds=settings.vllm_request_timeout_seconds,
+        health_timeout_seconds=settings.backend_health_timeout_seconds,
+        transport=httpx2.MockTransport(handler),
+    )
     app = create_app(settings, backend=backend)
 
     with TestClient(app) as client:
@@ -135,7 +146,14 @@ def test_tenant_authorization_is_never_forwarded_to_vllm() -> None:
 
 
 def test_credentials_do_not_appear_in_application_logs(capsys: pytest.CaptureFixture[str]) -> None:
-    settings = make_settings(vllm_api_key="backend-secret")
+    settings = make_settings(
+        backends_json={
+            "upstream": {
+                "base_url": "https://vllm.example.test",
+                "api_key": "backend-secret",
+            }
+        }
+    )
     app = create_app(settings, backend=FakeBackend())
 
     with TestClient(app) as client:

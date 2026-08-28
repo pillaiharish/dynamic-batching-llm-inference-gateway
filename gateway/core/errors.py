@@ -72,6 +72,14 @@ class BackendUnavailableError(BackendError):
     status_code = 503
 
 
+class NoHealthyBackendError(BackendError):
+    """Raised when the routing pool has no currently healthy member."""
+
+    code = "no_healthy_backend"
+    default_message = "No healthy inference backend is available"
+    status_code = 503
+
+
 class BackendTimeoutError(BackendError):
     """Raised when an inference backend operation exceeds its timeout."""
 
