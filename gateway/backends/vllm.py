@@ -9,7 +9,7 @@ from typing import Any
 import httpx2
 
 from gateway.backends.base import BackendStream
-from gateway.config import Settings
+from gateway.config import BackendConfig
 from gateway.core.errors import (
     BackendCapabilityError,
     BackendConfigurationError,
@@ -43,6 +43,12 @@ class _VLLMBackendStream:
         try:
             async for chunk in self._response.aiter_bytes():
                 yield chunk
+        except httpx2.TimeoutException as exc:
+            raise BackendTimeoutError() from exc
+        except httpx2.RequestError as exc:
+            raise BackendUnavailableError() from exc
+        except RuntimeError as exc:
+            raise BackendUnavailableError() from exc
         finally:
             await self.aclose()
 
@@ -61,22 +67,28 @@ class VLLMBackend:
 
     def __init__(
         self,
-        settings: Settings,
+        backend_id: str,
+        config: BackendConfig,
         *,
+        connect_timeout_seconds: float,
+        request_timeout_seconds: float,
+        health_timeout_seconds: float,
         transport: httpx2.AsyncBaseTransport | None = None,
     ) -> None:
         headers = {"Content-Type": "application/json"}
-        if settings.vllm_api_key is not None:
-            api_key = settings.vllm_api_key.get_secret_value()
+        if config.api_key is not None:
+            api_key = config.api_key.get_secret_value()
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
         timeout = httpx2.Timeout(
-            settings.vllm_request_timeout_seconds,
-            connect=settings.vllm_connect_timeout_seconds,
+            request_timeout_seconds,
+            connect=connect_timeout_seconds,
         )
+        self.backend_id = backend_id
+        self._health_timeout_seconds = health_timeout_seconds
         self._client = httpx2.AsyncClient(
-            base_url=settings.vllm_base_url,
+            base_url=config.base_url,
             headers=headers,
             timeout=timeout,
             transport=transport,
@@ -104,7 +116,11 @@ class VLLMBackend:
 
         logger.info(
             "vLLM request completed",
-            extra={"backend": "vllm", "upstream_status": response.status_code},
+            extra={
+                "backend": "vllm",
+                "backend_id": self.backend_id,
+                "upstream_status": response.status_code,
+            },
         )
         self._raise_for_upstream_status(response.status_code)
 
@@ -137,7 +153,11 @@ class VLLMBackend:
 
         logger.info(
             "vLLM streaming response opened",
-            extra={"backend": "vllm", "upstream_status": response.status_code},
+            extra={
+                "backend": "vllm",
+                "backend_id": self.backend_id,
+                "upstream_status": response.status_code,
+            },
         )
         try:
             self._raise_for_upstream_status(response.status_code)
@@ -157,6 +177,17 @@ class VLLMBackend:
     async def generate_batch(self, requests: list[Any]) -> list[Any]:
         """Reject backend batching until the batching milestone is implemented."""
         raise BackendCapabilityError("Batch generation is not supported")
+
+    async def check_health(self) -> bool:
+        """Probe vLLM's control-plane health endpoint without generation traffic."""
+        try:
+            response = await self._client.get(
+                "health",
+                timeout=self._health_timeout_seconds,
+            )
+        except (httpx2.RequestError, RuntimeError):
+            return False
+        return 200 <= response.status_code < 300
 
     async def close(self) -> None:
         """Close the long-lived pooled HTTP client."""

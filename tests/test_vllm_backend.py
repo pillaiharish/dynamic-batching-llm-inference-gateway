@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from gateway.app import create_app
 from gateway.backends.vllm import VLLMBackend
-from gateway.config import Settings
+from gateway.config import BackendConfig, Settings
 from gateway.core.errors import (
     BackendCapabilityError,
     BackendConfigurationError,
@@ -76,6 +76,20 @@ class BlockingByteStream(httpx2.AsyncByteStream):
         self.release_second.set()
 
 
+class FailingByteStream(httpx2.AsyncByteStream):
+    def __init__(self, exception_type: type[httpx2.RequestError]) -> None:
+        self.exception_type = exception_type
+        self.closed = False
+
+    async def __aiter__(self):
+        yield SSE_CHUNKS[0]
+        request = httpx2.Request("POST", "https://vllm.example.test/v1/chat/completions")
+        raise self.exception_type("midstream transport failure", request=request)
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
 def chat_request(**overrides: Any) -> ChatCompletionRequest:
     payload: dict[str, Any] = {
         "model": "served-model",
@@ -87,14 +101,22 @@ def chat_request(**overrides: Any) -> ChatCompletionRequest:
 
 def make_backend(
     handler: Any,
-    **settings_overrides: Any,
+    *,
+    backend_id: str = "test-backend",
+    base_url: str = "https://vllm.example.test/root/",
+    api_key: str | None = None,
+    vllm_connect_timeout_seconds: float = 5.0,
+    vllm_request_timeout_seconds: float = 120.0,
+    backend_health_timeout_seconds: float = 2.0,
 ) -> VLLMBackend:
-    settings = Settings(
-        _env_file=None,
-        vllm_base_url="https://vllm.example.test/root/",
-        **settings_overrides,
+    return VLLMBackend(
+        backend_id,
+        BackendConfig(base_url=base_url, api_key=api_key),
+        connect_timeout_seconds=vllm_connect_timeout_seconds,
+        request_timeout_seconds=vllm_request_timeout_seconds,
+        health_timeout_seconds=backend_health_timeout_seconds,
+        transport=httpx2.MockTransport(handler),
     )
-    return VLLMBackend(settings, transport=httpx2.MockTransport(handler))
 
 
 @pytest.mark.asyncio
@@ -112,7 +134,7 @@ async def test_generate_forwards_url_headers_and_exact_payload() -> None:
 
     backend = make_backend(
         handler,
-        vllm_api_key="backend-secret",
+        api_key="backend-secret",
         vllm_connect_timeout_seconds=2.5,
         vllm_request_timeout_seconds=9.0,
     )
@@ -265,7 +287,7 @@ async def test_stream_opens_unbuffered_request_and_relays_exact_bytes() -> None:
             stream=response_body,
         )
 
-    backend = make_backend(handler, vllm_api_key="backend-secret")
+    backend = make_backend(handler, api_key="backend-secret")
     try:
         stream = await backend.stream(chat_request(stream=True))
         assert response_body.iterated is False
@@ -420,6 +442,86 @@ async def test_explicit_stream_close_releases_upstream_response() -> None:
 
     assert response_body.iterated is False
     assert response_body.closed is True
+
+
+@pytest.mark.parametrize(
+    "exception_type,expected_error",
+    [
+        (httpx2.ReadTimeout, BackendTimeoutError),
+        (httpx2.ReadError, BackendUnavailableError),
+    ],
+)
+@pytest.mark.asyncio
+async def test_midstream_transport_failures_are_normalized(
+    exception_type: type[httpx2.RequestError],
+    expected_error: type[Exception],
+) -> None:
+    response_body = FailingByteStream(exception_type)
+    backend = make_backend(
+        lambda _request: httpx2.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            stream=response_body,
+        )
+    )
+    stream = await backend.stream(chat_request(stream=True))
+    iterator = stream.__aiter__()
+
+    assert await anext(iterator) == SSE_CHUNKS[0]
+    with pytest.raises(expected_error):
+        await anext(iterator)
+
+    assert response_body.closed is True
+    await backend.close()
+
+
+@pytest.mark.parametrize("status_code,expected", [(200, True), (204, True), (503, False)])
+@pytest.mark.asyncio
+async def test_health_probe_uses_health_endpoint_without_generation(
+    status_code: int,
+    expected: bool,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        captured["method"] = request.method
+        captured["url"] = str(request.url)
+        captured["authorization"] = request.headers["Authorization"]
+        captured["timeout"] = request.extensions["timeout"]
+        return httpx2.Response(status_code, content=b"ignored-health-body")
+
+    backend = make_backend(
+        handler,
+        api_key="backend-secret",
+        backend_health_timeout_seconds=0.75,
+    )
+    try:
+        healthy = await backend.check_health()
+    finally:
+        await backend.close()
+
+    assert healthy is expected
+    assert captured == {
+        "method": "GET",
+        "url": "https://vllm.example.test/root/health",
+        "authorization": "Bearer backend-secret",
+        "timeout": {"connect": 0.75, "read": 0.75, "write": 0.75, "pool": 0.75},
+    }
+
+
+@pytest.mark.parametrize("exception_type", [httpx2.ConnectError, httpx2.ReadTimeout])
+@pytest.mark.asyncio
+async def test_health_probe_transport_failure_is_unhealthy(
+    exception_type: type[httpx2.RequestError],
+) -> None:
+    async def handler(request: httpx2.Request) -> httpx2.Response:
+        raise exception_type("health failed", request=request)
+
+    backend = make_backend(handler)
+    try:
+        assert await backend.check_health() is False
+    finally:
+        await backend.close()
 
 
 @pytest.mark.asyncio

@@ -36,3 +36,12 @@ class InferenceBackend(Protocol):
     async def close(self) -> None:
         """Release resources owned by the backend."""
         ...
+
+
+@runtime_checkable
+class HealthCheckBackend(InferenceBackend, Protocol):
+    """A leaf inference backend whose routability can be probed."""
+
+    async def check_health(self) -> bool:
+        """Return whether the backend health endpoint currently succeeds."""
+        ...

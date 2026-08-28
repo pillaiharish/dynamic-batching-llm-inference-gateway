@@ -15,7 +15,8 @@ from gateway.auth.tenants import TenantContext
 from gateway.backends.base import BackendStream
 from gateway.backends.fake import FakeBackend
 from gateway.config import Settings
-from gateway.core.errors import BackendTimeoutError
+from gateway.core.errors import BackendTimeoutError, BackendUnavailableError
+from gateway.routing.pool import BackendPool
 from gateway.schemas.chat import ChatCompletionRequest
 from gateway.streaming.relay import StreamingRelay
 
@@ -40,9 +41,16 @@ def make_settings(**overrides: Any) -> Settings:
 
 
 class ControlledBackendStream:
-    def __init__(self, request_id: str, *, fail_after_first: bool = False) -> None:
+    def __init__(
+        self,
+        request_id: str,
+        *,
+        fail_after_first: bool = False,
+        failure: Exception | None = None,
+    ) -> None:
         self.request_id = request_id
         self.fail_after_first = fail_after_first
+        self.failure = failure
         self.first_produced = asyncio.Event()
         self.allow_finish = asyncio.Event()
         self.second_produced = asyncio.Event()
@@ -65,6 +73,8 @@ class ControlledBackendStream:
             self.first_produced.set()
             yield self.first_chunk
             await self.allow_finish.wait()
+            if self.failure is not None:
+                raise self.failure
             if self.fail_after_first:
                 raise RuntimeError("simulated upstream failure: private-stream-content")
             self.second_produced.set()
@@ -82,13 +92,21 @@ class ControlledBackendStream:
 
 
 class ControlledStreamingBackend:
-    def __init__(self, *, fail_after_first: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        fail_after_first: set[str] | None = None,
+        backend_fail_after_first: set[str] | None = None,
+    ) -> None:
         self.fail_after_first = fail_after_first or set()
+        self.backend_fail_after_first = backend_fail_after_first or set()
         self.streams: dict[str, ControlledBackendStream] = {}
         self.opened: asyncio.Queue[str] = asyncio.Queue()
+        self.generate_calls = 0
         self.closed = False
 
     async def generate(self, request: ChatCompletionRequest) -> dict[str, Any]:
+        self.generate_calls += 1
         return {"object": "chat.completion", "model": request.model, "choices": []}
 
     async def stream(self, request: ChatCompletionRequest) -> BackendStream:
@@ -96,6 +114,9 @@ class ControlledStreamingBackend:
         stream = ControlledBackendStream(
             request_id,
             fail_after_first=request_id in self.fail_after_first,
+            failure=(
+                BackendUnavailableError() if request_id in self.backend_fail_after_first else None
+            ),
         )
         self.streams[request_id] = stream
         self.opened.put_nowait(request_id)
@@ -103,6 +124,9 @@ class ControlledStreamingBackend:
 
     async def generate_batch(self, _requests: list[Any]) -> list[Any]:
         raise NotImplementedError
+
+    async def check_health(self) -> bool:
+        return not self.closed
 
     async def close(self) -> None:
         for stream in self.streams.values():
@@ -289,6 +313,83 @@ async def test_client_disconnect_closes_upstream_and_releases_admission() -> Non
         assert stream.second_produced.is_set() is False
         assert snapshot.global_inflight == 0
         assert snapshot.tenants["tenant-a"].inflight == 0
+
+
+@pytest.mark.asyncio
+async def test_client_disconnect_releases_router_and_admission_without_ejection() -> None:
+    backend = ControlledStreamingBackend()
+    pool = BackendPool(
+        {"gpu-a": backend},
+        health_interval_seconds=60,
+        health_timeout_seconds=1,
+    )
+    app = create_app(make_settings(), backend=pool)
+
+    async with app.router.lifespan_context(app):
+        request = ASGIRequest(app, "routed-disconnect")
+        await request.start()
+        await request.next_message()
+        await request.next_message()
+        stream = backend.streams["routed-disconnect"]
+
+        routing_active = await pool.snapshot()
+        admission_active = await app.state.admission_controller.snapshot()
+        assert routing_active.backends["gpu-a"].inflight == 1
+        assert admission_active.global_inflight == 1
+
+        await request.disconnect()
+        await request.wait_finished()
+        await asyncio.wait_for(stream.closed.wait(), timeout=1)
+
+        routing_finished = await pool.snapshot()
+        admission_finished = await app.state.admission_controller.snapshot()
+        assert routing_finished.backends["gpu-a"].inflight == 0
+        assert routing_finished.backends["gpu-a"].healthy is True
+        assert admission_finished.global_inflight == 0
+        assert admission_finished.tenants["tenant-a"].inflight == 0
+        assert stream.close_count == 1
+
+
+@pytest.mark.asyncio
+async def test_midstream_backend_failure_isolated_through_http_relay() -> None:
+    backend_a = ControlledStreamingBackend()
+    backend_b = ControlledStreamingBackend(backend_fail_after_first={"failure-on-b"})
+    pool = BackendPool(
+        {"gpu-a": backend_a, "gpu-b": backend_b},
+        health_interval_seconds=60,
+        health_timeout_seconds=1,
+    )
+    app = create_app(make_settings(), backend=pool)
+    warmup = ChatCompletionRequest.model_validate(
+        {
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "warmup"}],
+        }
+    )
+
+    async with app.router.lifespan_context(app):
+        await pool.generate(warmup)
+        request = ASGIRequest(app, "failure-on-b")
+        await request.start()
+        start = await request.next_message()
+        first = await request.next_message()
+        stream = backend_b.streams["failure-on-b"]
+        remaining = await finish_stream(request, stream)
+
+        assert start["status"] == 200
+        assert first["body"] == stream.first_chunk
+        assert remaining == []
+        assert "failure-on-b" not in backend_a.streams
+
+        routing = await pool.snapshot()
+        admission = await app.state.admission_controller.snapshot()
+        assert routing.backends["gpu-b"].healthy is False
+        assert routing.backends["gpu-b"].inflight == 0
+        assert admission.global_inflight == 0
+
+        await pool.generate(warmup)
+        assert backend_a.generate_calls == 2
+        assert backend_b.generate_calls == 0
 
 
 @pytest.mark.asyncio
