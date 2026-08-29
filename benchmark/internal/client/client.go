@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -162,7 +163,10 @@ func (client *Client) Do(ctx context.Context, request Request) Result {
 	response, err := client.http.Do(httpRequest)
 	if err != nil {
 		category := "transport"
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		var networkError net.Error
+		if errors.Is(err, context.DeadlineExceeded) ||
+			errors.Is(ctx.Err(), context.DeadlineExceeded) ||
+			(errors.As(err, &networkError) && networkError.Timeout()) {
 			category = "timeout"
 		}
 		return finish(result, started, category, category)
