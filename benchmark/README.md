@@ -353,7 +353,7 @@ transactional checkpoint or distributed recovery protocol.
 
 ### Admission sizing is part of the experiment
 
-Admission happens before batching, and v0.8 batching is tenant-local. If
+Admission happens before batching, and gateway batching is tenant-local. If
 `DYNAMIC_BATCH_MAX_SIZE=8`, both the benchmark tenant's `max_inflight` and
 `GLOBAL_MAX_INFLIGHT` must be at least eight, preferably with headroom for concurrent batches. A
 limit below batch size prevents intended aggregation and invalidates policy interpretation.

@@ -25,7 +25,7 @@ import (
 	"github.com/pillaiharish/dynamic-batching-llm-inference-gateway/benchmark/internal/workload"
 )
 
-const harnessVersion = "0.8.0"
+const harnessVersion = "0.9.0"
 
 var gatewayMetrics = []string{
 	"gateway_requests_total",

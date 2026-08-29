@@ -11,6 +11,12 @@ import (
 	"testing"
 )
 
+func TestHarnessVersion(t *testing.T) {
+	if harnessVersion != "0.9.0" {
+		t.Fatalf("harness version = %q, want 0.9.0", harnessVersion)
+	}
+}
+
 func TestRunDoesNotPersistAuthorizationSecret(t *testing.T) {
 	var tokens int
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
