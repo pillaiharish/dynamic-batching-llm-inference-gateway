@@ -1,0 +1,2104 @@
+{
+  "schema_version": 1,
+  "per_repeat": [
+    {
+      "mode": "non_streaming",
+      "concurrency": 1,
+      "repeat": 1,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 2701.260501,
+          "gateway_no_batch": 2707.091554,
+          "gateway_batch": 2707.993626
+        },
+        "request_throughput_rps": {
+          "direct": 0.4036274614347408,
+          "gateway_no_batch": 0.40291086380040897,
+          "gateway_batch": 0.40216563673265776
+        },
+        "output_throughput_tps": {
+          "direct": 47.25132148529366,
+          "gateway_no_batch": 47.16743178890121,
+          "gateway_batch": 47.0801905401698
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 5.8310529999998835,
+        "request_throughput_rps": -0.0007165976343318503,
+        "output_throughput_tps": -0.08388969639244692,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 0.9020719999998619,
+        "request_throughput_rps": -0.0007452270677512085,
+        "request_throughput_rps_relative_percent": -0.1849607778559137,
+        "output_throughput_tps": -0.08724124873140937,
+        "output_throughput_tps_relative_percent": -0.1849607778559137,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 1,
+      "repeat": 2,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 2701.811364,
+          "gateway_no_batch": 2704.860142,
+          "gateway_batch": 2722.41398
+        },
+        "request_throughput_rps": {
+          "direct": 0.4035982725815018,
+          "gateway_no_batch": 0.4033310672988797,
+          "gateway_batch": 0.4014827273615609
+        },
+        "output_throughput_tps": {
+          "direct": 47.247904443541145,
+          "gateway_no_batch": 47.216623611788854,
+          "gateway_batch": 47.00024461646006
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 3.0487779999998565,
+        "request_throughput_rps": -0.0002672052826221405,
+        "output_throughput_tps": -0.031280831752290794,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 17.553837999999814,
+        "request_throughput_rps": -0.0018483399373188103,
+        "request_throughput_rps_relative_percent": -0.4582686748375697,
+        "output_throughput_tps": -0.216378995328796,
+        "output_throughput_tps_relative_percent": -0.4582686748375919,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 1,
+      "repeat": 3,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 2698.586597,
+          "gateway_no_batch": 2703.249183,
+          "gateway_batch": 2711.43773
+        },
+        "request_throughput_rps": {
+          "direct": 0.4036496718851323,
+          "gateway_no_batch": 0.402941086124639,
+          "gateway_batch": 0.4018970706647432
+        },
+        "output_throughput_tps": {
+          "direct": 47.253921588686154,
+          "gateway_no_batch": 47.17096981565774,
+          "gateway_batch": 47.04875040581927
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 4.662585999999919,
+        "request_throughput_rps": -0.0007085857604932633,
+        "output_throughput_tps": -0.08295177302841239,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 8.188547000000199,
+        "request_throughput_rps": -0.0010440154598958529,
+        "request_throughput_rps_relative_percent": -0.259098785367573,
+        "output_throughput_tps": -0.1222194098384719,
+        "output_throughput_tps_relative_percent": -0.259098785367573,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 4,
+      "repeat": 1,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 3416.19532,
+          "gateway_no_batch": 3433.902425,
+          "gateway_batch": 2876.917249
+        },
+        "request_throughput_rps": {
+          "direct": 1.32544945931824,
+          "gateway_no_batch": 1.332078831043589,
+          "gateway_batch": 1.4198587781567118
+        },
+        "output_throughput_tps": {
+          "direct": 154.3044078889651,
+          "gateway_no_batch": 155.57570680896583,
+          "gateway_batch": 166.70325271208262
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 17.70710500000041,
+        "request_throughput_rps": 0.006629371725348943,
+        "output_throughput_tps": 1.2712989200007314,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -556.9851760000001,
+        "request_throughput_rps": 0.08777994711312287,
+        "request_throughput_rps_relative_percent": 6.589696125142508,
+        "output_throughput_tps": 11.127545903116783,
+        "output_throughput_tps_relative_percent": 7.152495805004122,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 4,
+      "repeat": 2,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 3428.218117,
+          "gateway_no_batch": 3366.115392,
+          "gateway_batch": 2918.972413
+        },
+        "request_throughput_rps": {
+          "direct": 1.3370116033513197,
+          "gateway_no_batch": 1.3552126400233728,
+          "gateway_batch": 1.4068530605393224
+        },
+        "output_throughput_tps": {
+          "direct": 156.26323114168548,
+          "gateway_no_batch": 158.19848884539505,
+          "gateway_batch": 164.44939900154228
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -62.10272499999974,
+        "request_throughput_rps": 0.018201036672053084,
+        "output_throughput_tps": 1.935257703709567,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -447.1429790000002,
+        "request_throughput_rps": 0.051640420515949526,
+        "request_throughput_rps_relative_percent": 3.810503163183232,
+        "output_throughput_tps": 6.250910156147228,
+        "output_throughput_tps_relative_percent": 3.9513083859202602,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 4,
+      "repeat": 3,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 3441.974955,
+          "gateway_no_batch": 3455.00751,
+          "gateway_batch": 2934.527229
+        },
+        "request_throughput_rps": {
+          "direct": 1.3262868990694725,
+          "gateway_no_batch": 1.3195718492317248,
+          "gateway_batch": 1.4134022754214826
+        },
+        "output_throughput_tps": {
+          "direct": 153.5950753030705,
+          "gateway_no_batch": 153.23528099203403,
+          "gateway_batch": 166.53412310153618
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 13.032554999999775,
+        "request_throughput_rps": -0.006715049837747733,
+        "output_throughput_tps": -0.35979431103646675,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -520.4802810000001,
+        "request_throughput_rps": 0.09383042618975779,
+        "request_throughput_rps_relative_percent": 7.1106720141375535,
+        "output_throughput_tps": 13.298842109502147,
+        "output_throughput_tps_relative_percent": 8.678707686249808,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 8,
+      "repeat": 1,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 4181.324181,
+          "gateway_no_batch": 4066.283069,
+          "gateway_batch": 3090.214344
+        },
+        "request_throughput_rps": {
+          "direct": 2.2312831612972226,
+          "gateway_no_batch": 2.2505326262283525,
+          "gateway_batch": 2.6971538819180965
+        },
+        "output_throughput_tps": {
+          "direct": 260.33496284435347,
+          "gateway_no_batch": 263.0497551289906,
+          "gateway_batch": 316.98300997242427
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -115.04111199999988,
+        "request_throughput_rps": 0.01924946493112989,
+        "output_throughput_tps": 2.7147922846371557,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -976.0687250000001,
+        "request_throughput_rps": 0.446621255689744,
+        "request_throughput_rps_relative_percent": 19.845135790732016,
+        "output_throughput_tps": 53.933254843433645,
+        "output_throughput_tps_relative_percent": 20.50306217429727,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 8,
+      "repeat": 2,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 4110.947037,
+          "gateway_no_batch": 4151.028266,
+          "gateway_batch": 3293.178679
+        },
+        "request_throughput_rps": {
+          "direct": 2.2304278078495345,
+          "gateway_no_batch": 2.2263555060948277,
+          "gateway_batch": 2.5964522814803073
+        },
+        "output_throughput_tps": {
+          "direct": 261.220270095978,
+          "gateway_no_batch": 260.5763590258488,
+          "gateway_batch": 303.63345721677626
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 40.08122900000035,
+        "request_throughput_rps": -0.004072301754706853,
+        "output_throughput_tps": -0.6439110701292066,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -857.8495870000002,
+        "request_throughput_rps": 0.3700967753854796,
+        "request_throughput_rps_relative_percent": 16.623435671989938,
+        "output_throughput_tps": 43.05709819092749,
+        "output_throughput_tps_relative_percent": 16.523793007122457,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 8,
+      "repeat": 3,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 4114.506507,
+          "gateway_no_batch": 4230.488936,
+          "gateway_batch": 3137.875335
+        },
+        "request_throughput_rps": {
+          "direct": 2.241466903454466,
+          "gateway_no_batch": 2.1992787533176243,
+          "gateway_batch": 2.683769324003866
+        },
+        "output_throughput_tps": {
+          "direct": 263.16689335641644,
+          "gateway_no_batch": 257.5905239823268,
+          "gateway_batch": 317.1544398641568
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 115.98242899999968,
+        "request_throughput_rps": -0.04218815013684152,
+        "output_throughput_tps": -5.576369374089666,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -1092.6136009999996,
+        "request_throughput_rps": 0.48449057068624146,
+        "request_throughput_rps_relative_percent": 22.029520812465677,
+        "output_throughput_tps": 59.56391588183004,
+        "output_throughput_tps_relative_percent": 23.123488768521906,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 16,
+      "repeat": 1,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 6515.504031,
+          "gateway_no_batch": 3520.478023,
+          "gateway_batch": 4957.031914
+        },
+        "request_throughput_rps": {
+          "direct": 2.8169632742542787,
+          "gateway_no_batch": 4.841503561732282,
+          "gateway_batch": 3.7225692768095775
+        },
+        "output_throughput_tps": {
+          "direct": 330.24199451840997,
+          "gateway_no_batch": 565.7700370514317,
+          "gateway_batch": 437.7741469528063
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -2995.0260080000003,
+        "request_throughput_rps": 2.0245402874780036,
+        "output_throughput_tps": 235.52804253302173,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 1436.553891,
+        "request_throughput_rps": -1.1189342849227049,
+        "request_throughput_rps_relative_percent": -23.11129736156493,
+        "output_throughput_tps": -127.99589009862541,
+        "output_throughput_tps_relative_percent": -22.62330659391032,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 16,
+      "repeat": 2,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 6863.25055,
+          "gateway_no_batch": 5475.277267,
+          "gateway_batch": 5995.482063
+        },
+        "request_throughput_rps": {
+          "direct": 2.681383221044986,
+          "gateway_no_batch": 3.165609308984026,
+          "gateway_batch": 2.830126896774147
+        },
+        "output_throughput_tps": {
+          "direct": 314.34749294717386,
+          "gateway_no_batch": 370.3235289959813,
+          "gateway_batch": 331.97388499160746
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -1387.9732829999994,
+        "request_throughput_rps": 0.48422608793903965,
+        "output_throughput_tps": 55.97603604880743,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 520.204796,
+        "request_throughput_rps": -0.33548241220987896,
+        "request_throughput_rps_relative_percent": -10.597720042640034,
+        "output_throughput_tps": -38.34964400437383,
+        "output_throughput_tps_relative_percent": -10.355713585995229,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 16,
+      "repeat": 3,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 6926.442395,
+          "gateway_no_batch": 6558.902465,
+          "gateway_batch": 5576.908886
+        },
+        "request_throughput_rps": {
+          "direct": 2.647362200395072,
+          "gateway_no_batch": 3.0378961999189773,
+          "gateway_batch": 2.8880818289210377
+        },
+        "output_throughput_tps": {
+          "direct": 310.1384817762827,
+          "gateway_no_batch": 356.370540052162,
+          "gateway_batch": 339.7346924754114
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -367.5399299999999,
+        "request_throughput_rps": 0.39053399952390544,
+        "output_throughput_tps": 46.23205827587935,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -981.993579,
+        "request_throughput_rps": -0.1498143709979396,
+        "request_throughput_rps_relative_percent": -4.9315171137820695,
+        "output_throughput_tps": -16.63584757675062,
+        "output_throughput_tps_relative_percent": -4.668132100458033,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 32,
+      "repeat": 1,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 10895.041485,
+          "gateway_no_batch": 12795.676271,
+          "gateway_batch": 12126.854181
+        },
+        "request_throughput_rps": {
+          "direct": 3.3841537733978413,
+          "gateway_no_batch": 2.671866739928148,
+          "gateway_batch": 3.080091705311621
+        },
+        "output_throughput_tps": {
+          "direct": 397.6944709371363,
+          "gateway_no_batch": 314.61230862653946,
+          "gateway_batch": 360.42206438321483
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 1900.6347860000005,
+        "request_throughput_rps": -0.7122870334696931,
+        "output_throughput_tps": -83.08216231059686,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -668.8220899999997,
+        "request_throughput_rps": 0.40822496538347286,
+        "request_throughput_rps_relative_percent": 15.278642429391919,
+        "output_throughput_tps": 45.80975575667537,
+        "output_throughput_tps_relative_percent": 14.560700424169948,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 32,
+      "repeat": 2,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 12838.7247,
+          "gateway_no_batch": 7032.255614,
+          "gateway_batch": 10882.52993
+        },
+        "request_throughput_rps": {
+          "direct": 2.711780052280218,
+          "gateway_no_batch": 4.879123053901513,
+          "gateway_batch": 3.456530405110527
+        },
+        "output_throughput_tps": {
+          "direct": 316.71331193922714,
+          "gateway_no_batch": 571.5486064057798,
+          "gateway_batch": 404.4716662380168
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -5806.469086000001,
+        "request_throughput_rps": 2.1673430016212953,
+        "output_throughput_tps": 254.83529446655263,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 3850.274316000001,
+        "request_throughput_rps": -1.4225926487909866,
+        "request_throughput_rps_relative_percent": -29.156728229131936,
+        "output_throughput_tps": -167.07694016776298,
+        "output_throughput_tps_relative_percent": -29.232323952014706,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 32,
+      "repeat": 3,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 12916.414142,
+          "gateway_no_batch": 13579.374592,
+          "gateway_batch": 12593.249751
+        },
+        "request_throughput_rps": {
+          "direct": 2.70213417495033,
+          "gateway_no_batch": 2.660699262658719,
+          "gateway_batch": 2.7686535341249554
+        },
+        "output_throughput_tps": {
+          "direct": 314.91122030566964,
+          "gateway_no_batch": 309.99363659359625,
+          "gateway_batch": 320.679295590023
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 662.9604500000005,
+        "request_throughput_rps": -0.04143491229161089,
+        "output_throughput_tps": -4.9175837120733945,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -986.1248410000007,
+        "request_throughput_rps": 0.10795427146623648,
+        "request_throughput_rps_relative_percent": 4.0573646552734655,
+        "output_throughput_tps": 10.685658996426753,
+        "output_throughput_tps_relative_percent": 3.4470575311956297,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 64,
+      "repeat": 1,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 25441.915436,
+          "gateway_no_batch": 21371.788753,
+          "gateway_batch": 24472.756179
+        },
+        "request_throughput_rps": {
+          "direct": 2.6467685291293668,
+          "gateway_no_batch": 3.0977589815210944,
+          "gateway_batch": 2.788217669248417
+        },
+        "output_throughput_tps": {
+          "direct": 310.00276397427706,
+          "gateway_no_batch": 363.34131387424503,
+          "gateway_batch": 325.61735347372763
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -4070.1266829999986,
+        "request_throughput_rps": 0.45099045239172764,
+        "output_throughput_tps": 53.33854989996797,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 3100.9674259999993,
+        "request_throughput_rps": -0.30954131227267734,
+        "request_throughput_rps_relative_percent": -9.992427239148316,
+        "output_throughput_tps": -37.7239604005174,
+        "output_throughput_tps_relative_percent": -10.38251334489695,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 64,
+      "repeat": 2,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 13263.354392,
+          "gateway_no_batch": 24708.326708,
+          "gateway_batch": 19919.765121
+        },
+        "request_throughput_rps": {
+          "direct": 4.991967241848347,
+          "gateway_no_batch": 2.749266634156314,
+          "gateway_batch": 3.90694172008899
+        },
+        "output_throughput_tps": {
+          "direct": 581.106586678163,
+          "gateway_no_batch": 321.5954645304348,
+          "gateway_batch": 459.09820995812373
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": 11444.972316000001,
+        "request_throughput_rps": -2.2427006076920333,
+        "output_throughput_tps": -259.5111221477282,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": -4788.561587,
+        "request_throughput_rps": 1.1576750859326759,
+        "request_throughput_rps_relative_percent": 42.10850528464436,
+        "output_throughput_tps": 137.50274542768892,
+        "output_throughput_tps_relative_percent": 42.75643178875617,
+        "error_rate": 0
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 64,
+      "repeat": 3,
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": 26839.785812,
+          "gateway_no_batch": 20219.948848,
+          "gateway_batch": 22869.061574
+        },
+        "request_throughput_rps": {
+          "direct": 2.5601691859200892,
+          "gateway_no_batch": 3.7935894159753616,
+          "gateway_batch": 3.027202336972435
+        },
+        "output_throughput_tps": {
+          "direct": 302.31331137073056,
+          "gateway_no_batch": 445.11449147444245,
+          "gateway_batch": 358.2693965806876
+        },
+        "error_rate": {
+          "direct": 0,
+          "gateway_no_batch": 0,
+          "gateway_batch": 0
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": -6619.836963999998,
+        "request_throughput_rps": 1.2334202300552723,
+        "output_throughput_tps": 142.80118010371189,
+        "error_rate": 0
+      },
+      "batching_effect": {
+        "e2e_p95_ms": 2649.1127259999994,
+        "request_throughput_rps": -0.7663870790029268,
+        "request_throughput_rps_relative_percent": -20.202161988737068,
+        "output_throughput_tps": -86.84509489375483,
+        "output_throughput_tps_relative_percent": -19.51073185824176,
+        "error_rate": 0
+      }
+    }
+  ],
+  "aggregated": [
+    {
+      "mode": "non_streaming",
+      "concurrency": 1,
+      "repeats": [
+        1,
+        2,
+        3
+      ],
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": {
+            "median": 2701.260501,
+            "min": 2698.586597,
+            "max": 2701.811364
+          },
+          "gateway_no_batch": {
+            "median": 2704.860142,
+            "min": 2703.249183,
+            "max": 2707.091554
+          },
+          "gateway_batch": {
+            "median": 2711.43773,
+            "min": 2707.993626,
+            "max": 2722.41398
+          }
+        },
+        "error_rate": {
+          "direct": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_no_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "output_throughput_tps": {
+          "direct": {
+            "median": 47.25132148529366,
+            "min": 47.247904443541145,
+            "max": 47.253921588686154
+          },
+          "gateway_no_batch": {
+            "median": 47.17096981565774,
+            "min": 47.16743178890121,
+            "max": 47.216623611788854
+          },
+          "gateway_batch": {
+            "median": 47.04875040581927,
+            "min": 47.00024461646006,
+            "max": 47.0801905401698
+          }
+        },
+        "request_throughput_rps": {
+          "direct": {
+            "median": 0.4036274614347408,
+            "min": 0.4035982725815018,
+            "max": 0.4036496718851323
+          },
+          "gateway_no_batch": {
+            "median": 0.402941086124639,
+            "min": 0.40291086380040897,
+            "max": 0.4033310672988797
+          },
+          "gateway_batch": {
+            "median": 0.4018970706647432,
+            "min": 0.4014827273615609,
+            "max": 0.40216563673265776
+          }
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": {
+          "median": 4.662585999999919,
+          "min": 3.0487779999998565,
+          "max": 5.8310529999998835
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": -0.08295177302841239,
+          "min": -0.08388969639244692,
+          "max": -0.031280831752290794
+        },
+        "request_throughput_rps": {
+          "median": -0.0007085857604932633,
+          "min": -0.0007165976343318503,
+          "max": -0.0002672052826221405
+        }
+      },
+      "batching_effect": {
+        "e2e_p95_ms": {
+          "median": 8.188547000000199,
+          "min": 0.9020719999998619,
+          "max": 17.553837999999814
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": -0.1222194098384719,
+          "min": -0.216378995328796,
+          "max": -0.08724124873140937
+        },
+        "output_throughput_tps_relative_percent": {
+          "median": -0.259098785367573,
+          "min": -0.4582686748375919,
+          "max": -0.1849607778559137
+        },
+        "request_throughput_rps": {
+          "median": -0.0010440154598958529,
+          "min": -0.0018483399373188103,
+          "max": -0.0007452270677512085
+        },
+        "request_throughput_rps_relative_percent": {
+          "median": -0.259098785367573,
+          "min": -0.4582686748375697,
+          "max": -0.1849607778559137
+        }
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 4,
+      "repeats": [
+        1,
+        2,
+        3
+      ],
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": {
+            "median": 3428.218117,
+            "min": 3416.19532,
+            "max": 3441.974955
+          },
+          "gateway_no_batch": {
+            "median": 3433.902425,
+            "min": 3366.115392,
+            "max": 3455.00751
+          },
+          "gateway_batch": {
+            "median": 2918.972413,
+            "min": 2876.917249,
+            "max": 2934.527229
+          }
+        },
+        "error_rate": {
+          "direct": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_no_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "output_throughput_tps": {
+          "direct": {
+            "median": 154.3044078889651,
+            "min": 153.5950753030705,
+            "max": 156.26323114168548
+          },
+          "gateway_no_batch": {
+            "median": 155.57570680896583,
+            "min": 153.23528099203403,
+            "max": 158.19848884539505
+          },
+          "gateway_batch": {
+            "median": 166.53412310153618,
+            "min": 164.44939900154228,
+            "max": 166.70325271208262
+          }
+        },
+        "request_throughput_rps": {
+          "direct": {
+            "median": 1.3262868990694725,
+            "min": 1.32544945931824,
+            "max": 1.3370116033513197
+          },
+          "gateway_no_batch": {
+            "median": 1.332078831043589,
+            "min": 1.3195718492317248,
+            "max": 1.3552126400233728
+          },
+          "gateway_batch": {
+            "median": 1.4134022754214826,
+            "min": 1.4068530605393224,
+            "max": 1.4198587781567118
+          }
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": {
+          "median": 13.032554999999775,
+          "min": -62.10272499999974,
+          "max": 17.70710500000041
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": 1.2712989200007314,
+          "min": -0.35979431103646675,
+          "max": 1.935257703709567
+        },
+        "request_throughput_rps": {
+          "median": 0.006629371725348943,
+          "min": -0.006715049837747733,
+          "max": 0.018201036672053084
+        }
+      },
+      "batching_effect": {
+        "e2e_p95_ms": {
+          "median": -520.4802810000001,
+          "min": -556.9851760000001,
+          "max": -447.1429790000002
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": 11.127545903116783,
+          "min": 6.250910156147228,
+          "max": 13.298842109502147
+        },
+        "output_throughput_tps_relative_percent": {
+          "median": 7.152495805004122,
+          "min": 3.9513083859202602,
+          "max": 8.678707686249808
+        },
+        "request_throughput_rps": {
+          "median": 0.08777994711312287,
+          "min": 0.051640420515949526,
+          "max": 0.09383042618975779
+        },
+        "request_throughput_rps_relative_percent": {
+          "median": 6.589696125142508,
+          "min": 3.810503163183232,
+          "max": 7.1106720141375535
+        }
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 8,
+      "repeats": [
+        1,
+        2,
+        3
+      ],
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": {
+            "median": 4114.506507,
+            "min": 4110.947037,
+            "max": 4181.324181
+          },
+          "gateway_no_batch": {
+            "median": 4151.028266,
+            "min": 4066.283069,
+            "max": 4230.488936
+          },
+          "gateway_batch": {
+            "median": 3137.875335,
+            "min": 3090.214344,
+            "max": 3293.178679
+          }
+        },
+        "error_rate": {
+          "direct": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_no_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "output_throughput_tps": {
+          "direct": {
+            "median": 261.220270095978,
+            "min": 260.33496284435347,
+            "max": 263.16689335641644
+          },
+          "gateway_no_batch": {
+            "median": 260.5763590258488,
+            "min": 257.5905239823268,
+            "max": 263.0497551289906
+          },
+          "gateway_batch": {
+            "median": 316.98300997242427,
+            "min": 303.63345721677626,
+            "max": 317.1544398641568
+          }
+        },
+        "request_throughput_rps": {
+          "direct": {
+            "median": 2.2312831612972226,
+            "min": 2.2304278078495345,
+            "max": 2.241466903454466
+          },
+          "gateway_no_batch": {
+            "median": 2.2263555060948277,
+            "min": 2.1992787533176243,
+            "max": 2.2505326262283525
+          },
+          "gateway_batch": {
+            "median": 2.683769324003866,
+            "min": 2.5964522814803073,
+            "max": 2.6971538819180965
+          }
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": {
+          "median": 40.08122900000035,
+          "min": -115.04111199999988,
+          "max": 115.98242899999968
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": -0.6439110701292066,
+          "min": -5.576369374089666,
+          "max": 2.7147922846371557
+        },
+        "request_throughput_rps": {
+          "median": -0.004072301754706853,
+          "min": -0.04218815013684152,
+          "max": 0.01924946493112989
+        }
+      },
+      "batching_effect": {
+        "e2e_p95_ms": {
+          "median": -976.0687250000001,
+          "min": -1092.6136009999996,
+          "max": -857.8495870000002
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": 53.933254843433645,
+          "min": 43.05709819092749,
+          "max": 59.56391588183004
+        },
+        "output_throughput_tps_relative_percent": {
+          "median": 20.50306217429727,
+          "min": 16.523793007122457,
+          "max": 23.123488768521906
+        },
+        "request_throughput_rps": {
+          "median": 0.446621255689744,
+          "min": 0.3700967753854796,
+          "max": 0.48449057068624146
+        },
+        "request_throughput_rps_relative_percent": {
+          "median": 19.845135790732016,
+          "min": 16.623435671989938,
+          "max": 22.029520812465677
+        }
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 16,
+      "repeats": [
+        1,
+        2,
+        3
+      ],
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": {
+            "median": 6863.25055,
+            "min": 6515.504031,
+            "max": 6926.442395
+          },
+          "gateway_no_batch": {
+            "median": 5475.277267,
+            "min": 3520.478023,
+            "max": 6558.902465
+          },
+          "gateway_batch": {
+            "median": 5576.908886,
+            "min": 4957.031914,
+            "max": 5995.482063
+          }
+        },
+        "error_rate": {
+          "direct": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_no_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "output_throughput_tps": {
+          "direct": {
+            "median": 314.34749294717386,
+            "min": 310.1384817762827,
+            "max": 330.24199451840997
+          },
+          "gateway_no_batch": {
+            "median": 370.3235289959813,
+            "min": 356.370540052162,
+            "max": 565.7700370514317
+          },
+          "gateway_batch": {
+            "median": 339.7346924754114,
+            "min": 331.97388499160746,
+            "max": 437.7741469528063
+          }
+        },
+        "request_throughput_rps": {
+          "direct": {
+            "median": 2.681383221044986,
+            "min": 2.647362200395072,
+            "max": 2.8169632742542787
+          },
+          "gateway_no_batch": {
+            "median": 3.165609308984026,
+            "min": 3.0378961999189773,
+            "max": 4.841503561732282
+          },
+          "gateway_batch": {
+            "median": 2.8880818289210377,
+            "min": 2.830126896774147,
+            "max": 3.7225692768095775
+          }
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": {
+          "median": -1387.9732829999994,
+          "min": -2995.0260080000003,
+          "max": -367.5399299999999
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": 55.97603604880743,
+          "min": 46.23205827587935,
+          "max": 235.52804253302173
+        },
+        "request_throughput_rps": {
+          "median": 0.48422608793903965,
+          "min": 0.39053399952390544,
+          "max": 2.0245402874780036
+        }
+      },
+      "batching_effect": {
+        "e2e_p95_ms": {
+          "median": 520.204796,
+          "min": -981.993579,
+          "max": 1436.553891
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": -38.34964400437383,
+          "min": -127.99589009862541,
+          "max": -16.63584757675062
+        },
+        "output_throughput_tps_relative_percent": {
+          "median": -10.355713585995229,
+          "min": -22.62330659391032,
+          "max": -4.668132100458033
+        },
+        "request_throughput_rps": {
+          "median": -0.33548241220987896,
+          "min": -1.1189342849227049,
+          "max": -0.1498143709979396
+        },
+        "request_throughput_rps_relative_percent": {
+          "median": -10.597720042640034,
+          "min": -23.11129736156493,
+          "max": -4.9315171137820695
+        }
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 32,
+      "repeats": [
+        1,
+        2,
+        3
+      ],
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": {
+            "median": 12838.7247,
+            "min": 10895.041485,
+            "max": 12916.414142
+          },
+          "gateway_no_batch": {
+            "median": 12795.676271,
+            "min": 7032.255614,
+            "max": 13579.374592
+          },
+          "gateway_batch": {
+            "median": 12126.854181,
+            "min": 10882.52993,
+            "max": 12593.249751
+          }
+        },
+        "error_rate": {
+          "direct": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_no_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "output_throughput_tps": {
+          "direct": {
+            "median": 316.71331193922714,
+            "min": 314.91122030566964,
+            "max": 397.6944709371363
+          },
+          "gateway_no_batch": {
+            "median": 314.61230862653946,
+            "min": 309.99363659359625,
+            "max": 571.5486064057798
+          },
+          "gateway_batch": {
+            "median": 360.42206438321483,
+            "min": 320.679295590023,
+            "max": 404.4716662380168
+          }
+        },
+        "request_throughput_rps": {
+          "direct": {
+            "median": 2.711780052280218,
+            "min": 2.70213417495033,
+            "max": 3.3841537733978413
+          },
+          "gateway_no_batch": {
+            "median": 2.671866739928148,
+            "min": 2.660699262658719,
+            "max": 4.879123053901513
+          },
+          "gateway_batch": {
+            "median": 3.080091705311621,
+            "min": 2.7686535341249554,
+            "max": 3.456530405110527
+          }
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": {
+          "median": 662.9604500000005,
+          "min": -5806.469086000001,
+          "max": 1900.6347860000005
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": -4.9175837120733945,
+          "min": -83.08216231059686,
+          "max": 254.83529446655263
+        },
+        "request_throughput_rps": {
+          "median": -0.04143491229161089,
+          "min": -0.7122870334696931,
+          "max": 2.1673430016212953
+        }
+      },
+      "batching_effect": {
+        "e2e_p95_ms": {
+          "median": -668.8220899999997,
+          "min": -986.1248410000007,
+          "max": 3850.274316000001
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": 10.685658996426753,
+          "min": -167.07694016776298,
+          "max": 45.80975575667537
+        },
+        "output_throughput_tps_relative_percent": {
+          "median": 3.4470575311956297,
+          "min": -29.232323952014706,
+          "max": 14.560700424169948
+        },
+        "request_throughput_rps": {
+          "median": 0.10795427146623648,
+          "min": -1.4225926487909866,
+          "max": 0.40822496538347286
+        },
+        "request_throughput_rps_relative_percent": {
+          "median": 4.0573646552734655,
+          "min": -29.156728229131936,
+          "max": 15.278642429391919
+        }
+      }
+    },
+    {
+      "mode": "non_streaming",
+      "concurrency": 64,
+      "repeats": [
+        1,
+        2,
+        3
+      ],
+      "targets": {
+        "e2e_p95_ms": {
+          "direct": {
+            "median": 25441.915436,
+            "min": 13263.354392,
+            "max": 26839.785812
+          },
+          "gateway_no_batch": {
+            "median": 21371.788753,
+            "min": 20219.948848,
+            "max": 24708.326708
+          },
+          "gateway_batch": {
+            "median": 22869.061574,
+            "min": 19919.765121,
+            "max": 24472.756179
+          }
+        },
+        "error_rate": {
+          "direct": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_no_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          },
+          "gateway_batch": {
+            "median": 0,
+            "min": 0,
+            "max": 0
+          }
+        },
+        "output_throughput_tps": {
+          "direct": {
+            "median": 310.00276397427706,
+            "min": 302.31331137073056,
+            "max": 581.106586678163
+          },
+          "gateway_no_batch": {
+            "median": 363.34131387424503,
+            "min": 321.5954645304348,
+            "max": 445.11449147444245
+          },
+          "gateway_batch": {
+            "median": 358.2693965806876,
+            "min": 325.61735347372763,
+            "max": 459.09820995812373
+          }
+        },
+        "request_throughput_rps": {
+          "direct": {
+            "median": 2.6467685291293668,
+            "min": 2.5601691859200892,
+            "max": 4.991967241848347
+          },
+          "gateway_no_batch": {
+            "median": 3.0977589815210944,
+            "min": 2.749266634156314,
+            "max": 3.7935894159753616
+          },
+          "gateway_batch": {
+            "median": 3.027202336972435,
+            "min": 2.788217669248417,
+            "max": 3.90694172008899
+          }
+        }
+      },
+      "gateway_overhead": {
+        "e2e_p95_ms": {
+          "median": -4070.1266829999986,
+          "min": -6619.836963999998,
+          "max": 11444.972316000001
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": 53.33854989996797,
+          "min": -259.5111221477282,
+          "max": 142.80118010371189
+        },
+        "request_throughput_rps": {
+          "median": 0.45099045239172764,
+          "min": -2.2427006076920333,
+          "max": 1.2334202300552723
+        }
+      },
+      "batching_effect": {
+        "e2e_p95_ms": {
+          "median": 2649.1127259999994,
+          "min": -4788.561587,
+          "max": 3100.9674259999993
+        },
+        "error_rate": {
+          "median": 0,
+          "min": 0,
+          "max": 0
+        },
+        "output_throughput_tps": {
+          "median": -37.7239604005174,
+          "min": -86.84509489375483,
+          "max": 137.50274542768892
+        },
+        "output_throughput_tps_relative_percent": {
+          "median": -10.38251334489695,
+          "min": -19.51073185824176,
+          "max": 42.75643178875617
+        },
+        "request_throughput_rps": {
+          "median": -0.30954131227267734,
+          "min": -0.7663870790029268,
+          "max": 1.1576750859326759
+        },
+        "request_throughput_rps_relative_percent": {
+          "median": -9.992427239148316,
+          "min": -20.202161988737068,
+          "max": 42.10850528464436
+        }
+      }
+    }
+  ],
+  "artifact_counter_deltas": {
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-1/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-1/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14048.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-1/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14048.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-2/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-2/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14048.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-2/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14048.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-3/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-3/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14048.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c1/repeat-3/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14048.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-1/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-1/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14112.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-1/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14023.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-2/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-2/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14076.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-2/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14038.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-3/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-3/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14116.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c16/repeat-3/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14077.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-1/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-1/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14042.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-1/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14130.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-2/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-2/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14042.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-2/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14057.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-3/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-3/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 13899.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c32/repeat-3/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 13981.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-1/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-1/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14089.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-1/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14015.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-2/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-2/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14027.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-2/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14008.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-3/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-3/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14139.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c4/repeat-3/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 13935.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-1/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-1/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14014.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-1/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14075.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-2/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-2/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14101.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-2/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14037.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-3/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-3/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14202.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c64/repeat-3/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14080.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-1/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-1/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14103.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-1/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14026.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-2/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-2/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14033.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-2/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14045.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-3/direct/client-result.json": {
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-3/gateway_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14181.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    },
+    "benchmark/results/full-h100-sweep-v1/runs/h100-qwen38-full-sweep-v1/non_streaming/c8/repeat-3/gateway_no_batch/client-result.json": {
+      "gateway_observed_output_tokens_total": {
+        "missing": false,
+        "reset": false,
+        "value": 14055.0
+      },
+      "vllm:generation_tokens": {
+        "missing": true,
+        "reset": false,
+        "value": null
+      }
+    }
+  },
+  "validation_errors": []
+}

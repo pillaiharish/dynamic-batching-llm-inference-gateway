@@ -59,7 +59,8 @@ B = gateway → vLLM, dynamic batching OFF
 C = gateway → vLLM, dynamic batching ON
 
 B - A = gateway overhead
-C - B = gateway batching effect
+C - B = end-to-end effect of gateway-side compatible request aggregation
+        through vLLM's batch endpoint
 ```
 
 Comparing only A with C is invalid because it conflates gateway overhead with batching behavior.
@@ -89,8 +90,15 @@ configuration and admission controls, A/B/C matrix, official vLLM benchmark comm
 failure runbooks, artifacts, validation, and local fake-server smoke. Large raw runs are ignored;
 only deliberately reviewed artifacts belong under [benchmark/evidence](benchmark/evidence/README.md).
 
-Real-GPU A/B/C performance evidence has not yet been collected. No throughput, latency, GPU-cost,
-or utilization percentage in this repository is synthetic or implied by the fake-server tests.
+The repository now includes a deliberately curated
+[H100 Qwen3.8-27B A/B/C sweep](benchmark/evidence/h100-qwen38-27b-20260829/README.md). For that exact
+non-streaming workload, gateway batching helped at sustained concurrency 4–8 but was inconsistent at
+higher concurrency. This is scoped experimental evidence, not a general performance or cost claim;
+dynamic batching remains disabled by default.
+
+The experiment was produced by gateway and benchmark harness v0.8.0 at
+`c62661e67c94052f8b1269b73852424bec31be61`; this repository milestone advances the project and
+harness to v0.9.0 without rewriting that historical metadata.
 
 ## Supported Chat Completions subset
 

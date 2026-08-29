@@ -13,8 +13,10 @@ helps, hurts, or is neutral. A negative result is valid evidence. At concurrency
 gateway batcher normally adds its timeout wait because no compatible peer arrives. At moderate or
 high concurrency, native vLLM scheduling may already capture most available batching benefit.
 
-No real-GPU A/B/C performance evidence has been collected in this repository. The fake-server
-tests prove protocol and measurement behavior only; they are not synthetic performance evidence.
+Curated real-GPU evidence is available for one
+[H100 Qwen3.8-27B A/B/C sweep](evidence/h100-qwen38-27b-20260829/README.md). Its conclusions are
+limited to the recorded non-streaming workload and deployment. The fake-server tests still prove
+protocol and measurement behavior only; they are not synthetic performance evidence.
 
 ## Scientific question and three-arm design
 
