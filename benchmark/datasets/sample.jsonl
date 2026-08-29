@@ -1,0 +1,32 @@
+{"id":"req-0001","messages":[{"role":"user","content":"Explain why the sky appears blue in two sentences."}]}
+{"id":"req-0002","messages":[{"role":"user","content":"List three practical uses of a hash function."}]}
+{"id":"req-0003","messages":[{"role":"user","content":"Summarize the water cycle for a middle-school student."}]}
+{"id":"req-0004","messages":[{"role":"user","content":"Write a short definition of closed-loop load testing."}]}
+{"id":"req-0005","messages":[{"role":"user","content":"Name four properties of a well-designed API."}]}
+{"id":"req-0006","messages":[{"role":"user","content":"Describe the difference between latency and throughput."}]}
+{"id":"req-0007","messages":[{"role":"user","content":"Give a concise example of a race condition."}]}
+{"id":"req-0008","messages":[{"role":"user","content":"Why are warmup requests excluded from benchmarks?"}]}
+{"id":"req-0009","messages":[{"role":"user","content":"Explain continuous batching without using equations."}]}
+{"id":"req-0010","messages":[{"role":"user","content":"List three reasons experimental order can bias results."}]}
+{"id":"req-0011","messages":[{"role":"user","content":"What does a p95 latency describe?"}]}
+{"id":"req-0012","messages":[{"role":"user","content":"Give two benefits of deterministic test data."}]}
+{"id":"req-0013","messages":[{"role":"user","content":"Describe one risk of prefix caching in comparative tests."}]}
+{"id":"req-0014","messages":[{"role":"user","content":"What information belongs in a benchmark manifest?"}]}
+{"id":"req-0015","messages":[{"role":"user","content":"Explain why counters need before and after snapshots."}]}
+{"id":"req-0016","messages":[{"role":"user","content":"Write one sentence about reproducible research."}]}
+{"id":"req-0017","messages":[{"role":"user","content":"List four common HTTP error categories."}]}
+{"id":"req-0018","messages":[{"role":"user","content":"What is time to first token?"}]}
+{"id":"req-0019","messages":[{"role":"user","content":"Explain why one SSE event may not equal one token."}]}
+{"id":"req-0020","messages":[{"role":"user","content":"Give a short definition of a negative control."}]}
+{"id":"req-0021","messages":[{"role":"user","content":"Name three measurements useful for GPU monitoring."}]}
+{"id":"req-0022","messages":[{"role":"user","content":"Why should benchmark credentials stay out of command lines?"}]}
+{"id":"req-0023","messages":[{"role":"user","content":"Describe a fair comparison in one paragraph."}]}
+{"id":"req-0024","messages":[{"role":"user","content":"What can cause a Prometheus counter reset?"}]}
+{"id":"req-0025","messages":[{"role":"user","content":"List three limits that protect an inference gateway."}]}
+{"id":"req-0026","messages":[{"role":"user","content":"Explain the purpose of a settling interval."}]}
+{"id":"req-0027","messages":[{"role":"user","content":"What is an experiment configuration fingerprint?"}]}
+{"id":"req-0028","messages":[{"role":"user","content":"Describe the nearest-rank percentile method."}]}
+{"id":"req-0029","messages":[{"role":"user","content":"Why retain per-repetition benchmark results?"}]}
+{"id":"req-0030","messages":[{"role":"user","content":"Give two reasons to use a reusable HTTP transport."}]}
+{"id":"req-0031","messages":[{"role":"user","content":"Explain what output-token throughput measures."}]}
+{"id":"req-0032","messages":[{"role":"user","content":"Write a concise caution about synthetic performance data."}]}

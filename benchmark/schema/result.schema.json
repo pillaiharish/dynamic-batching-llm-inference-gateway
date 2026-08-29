@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/pillaiharish/dynamic-batching-llm-inference-gateway/benchmark/schema/result.schema.json",
+  "title": "Gateway benchmark client result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "metadata",
+    "configuration",
+    "timing",
+    "warmup",
+    "summary",
+    "per_request",
+    "metrics",
+    "metric_artifacts",
+    "environment",
+    "validity"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "metadata": {
+      "type": "object",
+      "required": ["run_id", "timestamp_utc", "label", "repeat", "execution_order"]
+    },
+    "configuration": {
+      "type": "object",
+      "required": [
+        "base_url", "endpoint", "model", "mode", "concurrency", "requests", "warmup",
+        "timeout_seconds", "dataset_sha256", "temperature", "top_p", "max_tokens", "seed",
+        "n", "stream", "stream_include_usage", "batching_enabled", "prefix_caching",
+        "workload_fingerprint", "gateway_config_fingerprint", "vllm_config_fingerprint"
+      ],
+      "properties": {
+        "mode": {"enum": ["streaming", "non_streaming"]},
+        "concurrency": {"type": "integer", "minimum": 1},
+        "requests": {"type": "integer", "minimum": 1},
+        "warmup": {"type": "integer", "minimum": 0},
+        "dataset_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "required": ["measured_start_utc", "measured_end_utc", "duration_seconds"]
+    },
+    "warmup": {
+      "type": "object",
+      "required": ["attempted", "success", "failed"]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "attempted", "successful", "failed", "error_rate", "errors_by_category",
+        "e2e", "ttft", "request_throughput_rps", "output_throughput_tps",
+        "authoritative_token_coverage"
+      ]
+    },
+    "per_request": {"type": "array"},
+    "metrics": {"type": "object"},
+    "metric_artifacts": {"type": "object"},
+    "environment": {"type": "object"},
+    "validity": {
+      "type": "object",
+      "required": ["valid", "reasons"]
+    }
+  },
+  "additionalProperties": false
+}

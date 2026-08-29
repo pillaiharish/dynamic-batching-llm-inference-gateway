@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "run_id": "tenant-isolation-manual",
+  "model": "${BENCH_MODEL}",
+  "dataset": "datasets/sample.jsonl",
+  "endpoint": "/v1/chat/completions",
+  "timeout": "120s",
+  "warmup": 20,
+  "probe_start_delay_seconds": 1,
+  "prefix_caching": "disabled",
+  "vllm_version": "${BENCH_VLLM_VERSION}",
+  "gateway_git_sha": "${BENCH_GATEWAY_GIT_SHA}",
+  "vllm_config": "${BENCH_VLLM_CONFIG}",
+  "environment": "${BENCH_ENVIRONMENT_JSON}",
+  "sample_interval": "500ms",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 128,
+    "seed": 1
+  },
+  "target": {
+    "base_url": "${BENCH_GATEWAY_OFF_BASE_URL}",
+    "gateway_metrics_url": "${BENCH_GATEWAY_OFF_METRICS_URL}",
+    "vllm_metrics_url": "${BENCH_VLLM_METRICS_URL}",
+    "batching_enabled": "false",
+    "tenant_max_inflight": 128,
+    "global_max_inflight": 128,
+    "gateway_config": "configs/gateway-off.json"
+  },
+  "clients": [
+    {
+      "label": "tenant_a_noisy",
+      "auth_token_env": "BENCH_TENANT_A_AUTH_TOKEN",
+      "concurrency": 32,
+      "requests": 1280
+    },
+    {
+      "label": "tenant_b_probe",
+      "auth_token_env": "BENCH_TENANT_B_AUTH_TOKEN",
+      "concurrency": 1,
+      "requests": 40
+    }
+  ]
+}

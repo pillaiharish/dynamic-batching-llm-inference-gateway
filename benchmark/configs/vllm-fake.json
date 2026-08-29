@@ -1,0 +1,6 @@
+{
+  "server": "benchmark/scripts/fake_server.py",
+  "model": "fake-model",
+  "prefix_caching": "disabled",
+  "purpose": "CI and local protocol smoke only; never performance evidence"
+}
