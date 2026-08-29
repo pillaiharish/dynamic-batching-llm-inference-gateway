@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import threading
 import unittest
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
+from unittest import mock
 
 BENCHMARK_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BENCHMARK_ROOT / "scripts"))
@@ -17,6 +20,78 @@ import validate_result  # noqa: E402
 
 
 class MatrixTests(unittest.TestCase):
+    def write_completed_run(
+        self,
+        output: Path,
+        command: list[str],
+        expected: run_matrix.RunCoordinate,
+        expected_configuration: dict[str, object],
+        plan_sha256: str,
+        *,
+        exit_code: int = 0,
+        failed: int = 0,
+        valid: bool = True,
+        per_request_count: int | None = None,
+    ) -> None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        successful = expected.requests - failed
+        result = {
+            "schema_version": 1,
+            "metadata": {
+                "run_id": expected.run_id,
+                "timestamp_utc": "2026-08-29T00:00:00Z",
+                "label": expected.label,
+                "repeat": expected.repeat,
+                "execution_order": expected.execution_order,
+            },
+            "configuration": {
+                **expected_configuration,
+                "timeout_seconds": 5,
+                "workload_fingerprint": "workload",
+                "gateway_config_fingerprint": "gateway",
+                "vllm_config_fingerprint": "vllm",
+            },
+            "timing": {
+                "measured_start_utc": "2026-08-29T00:00:00Z",
+                "measured_end_utc": "2026-08-29T00:00:01Z",
+                "duration_seconds": 1,
+            },
+            "warmup": {"attempted": 0, "success": 0, "failed": 0},
+            "summary": {
+                "attempted": expected.requests,
+                "successful": successful,
+                "failed": failed,
+                "error_rate": failed / expected.requests,
+                "errors_by_category": {},
+                "e2e": {},
+                "ttft": {},
+                "request_throughput_rps": 1,
+                "output_throughput_tps": 1,
+                "authoritative_token_coverage": 1,
+            },
+            "per_request": [
+                {}
+                for _ in range(
+                    expected.requests if per_request_count is None else per_request_count
+                )
+            ],
+            "metrics": {},
+            "metric_artifacts": {},
+            "environment": {},
+            "validity": {"valid": valid, "reasons": []},
+        }
+        output.write_text(json.dumps(result), encoding="utf-8")
+        (output.parent / "process.json").write_text(
+            json.dumps(
+                {
+                    "exit_code": exit_code,
+                    "command": command,
+                    "resume_plan_sha256": plan_sha256,
+                }
+            ),
+            encoding="utf-8",
+        )
+
     def test_rotation(self) -> None:
         targets = [{"label": "direct"}, {"label": "off"}, {"label": "on"}]
         self.assertEqual(
@@ -43,6 +118,284 @@ class MatrixTests(unittest.TestCase):
                     "global_max_inflight": 16,
                 }
             )
+
+    def test_completed_run_requires_exact_successful_coordinate(self) -> None:
+        expected = run_matrix.RunCoordinate(
+            run_id="matrix-non_streaming-c1-r1-direct",
+            label="direct",
+            mode="non_streaming",
+            concurrency=1,
+            repeat=1,
+            execution_order=1,
+            requests=2,
+        )
+        command = ["go", "run", "benchmark"]
+        expected_configuration = {
+            "base_url": "http://127.0.0.1:18000",
+            "endpoint": "/v1/chat/completions",
+            "model": "test-model",
+            "mode": expected.mode,
+            "concurrency": expected.concurrency,
+            "requests": expected.requests,
+            "warmup": 0,
+            "dataset_sha256": "a" * 64,
+            "temperature": 0,
+            "top_p": 1,
+            "max_tokens": 8,
+            "seed": 1,
+            "n": 1,
+            "stream": False,
+            "stream_include_usage": False,
+            "batching_enabled": "not_applicable",
+            "prefix_caching": "disabled",
+        }
+        plan_sha256 = "b" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "client-result.json"
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, plan_sha256
+                )
+            )
+
+            self.write_completed_run(output, command, expected, expected_configuration, plan_sha256)
+            self.assertTrue(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, plan_sha256
+                )
+            )
+
+            (output.parent / "process.json").unlink()
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, plan_sha256
+                )
+            )
+
+            self.write_completed_run(output, command, expected, expected_configuration, plan_sha256)
+            process_path = output.parent / "process.json"
+            process = json.loads(process_path.read_text(encoding="utf-8"))
+            process.pop("resume_plan_sha256")
+            process_path.write_text(json.dumps(process), encoding="utf-8")
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, plan_sha256
+                )
+            )
+
+            for case, changes in [
+                ("failed request", {"failed": 1}),
+                ("invalid result", {"valid": False}),
+                ("failed process", {"exit_code": 1}),
+                ("partial result", {"per_request_count": 1}),
+            ]:
+                with self.subTest(case=case):
+                    self.write_completed_run(
+                        output,
+                        command,
+                        expected,
+                        expected_configuration,
+                        plan_sha256,
+                        **changes,
+                    )
+                    self.assertFalse(
+                        run_matrix.completed_run(
+                            output, command, expected, expected_configuration, plan_sha256
+                        )
+                    )
+
+            self.write_completed_run(output, command, expected, expected_configuration, plan_sha256)
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, ["different"], expected, expected_configuration, plan_sha256
+                )
+            )
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output,
+                    command,
+                    replace(expected, repeat=2),
+                    expected_configuration,
+                    plan_sha256,
+                )
+            )
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output,
+                    command,
+                    expected,
+                    {**expected_configuration, "model": "drifted"},
+                    plan_sha256,
+                )
+            )
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, "c" * 64
+                )
+            )
+
+            output.write_text("{", encoding="utf-8")
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, plan_sha256
+                )
+            )
+
+            self.write_completed_run(output, command, expected, expected_configuration, plan_sha256)
+            (output.parent / "process.json").write_text("{", encoding="utf-8")
+            self.assertFalse(
+                run_matrix.completed_run(
+                    output, command, expected, expected_configuration, plan_sha256
+                )
+            )
+
+    def test_resume_plan_fingerprint_detects_input_content_drift(self) -> None:
+        expected = run_matrix.RunCoordinate(
+            run_id="matrix-non_streaming-c1-r1-direct",
+            label="direct",
+            mode="non_streaming",
+            concurrency=1,
+            repeat=1,
+            execution_order=1,
+            requests=1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            dataset = Path(directory) / "dataset.jsonl"
+            dataset.write_text('{"id":"before"}\n', encoding="utf-8")
+            config = {"dataset": str(dataset)}
+            target = {"label": "direct"}
+            before_hashes = run_matrix.referenced_input_hashes(config, target)
+            before = run_matrix.resume_plan_sha256(["benchmark"], expected, before_hashes, None)
+
+            dataset.write_text('{"id":"after"}\n', encoding="utf-8")
+            after_hashes = run_matrix.referenced_input_hashes(config, target)
+            after = run_matrix.resume_plan_sha256(["benchmark"], expected, after_hashes, None)
+
+            self.assertNotEqual(before_hashes, after_hashes)
+            self.assertNotEqual(before, after)
+
+    def test_resume_skips_completed_run_without_initial_settling_delay(self) -> None:
+        config = {
+            "run_id": "resume-test",
+            "model": "test-model",
+            "dataset": "datasets/sample.jsonl",
+            "targets": [
+                {
+                    "label": "direct",
+                    "base_url": "http://127.0.0.1:18000",
+                    "batching_enabled": "not_applicable",
+                }
+            ],
+            "modes": ["non_streaming"],
+            "concurrency": [1],
+            "requests": 1,
+            "warmup": 0,
+            "repetitions": 2,
+            "settle_seconds": 5,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output_root = Path(directory)
+            target = config["targets"][0]
+            output = (
+                output_root
+                / "resume-test"
+                / "non_streaming"
+                / "c1"
+                / "repeat-1"
+                / "direct"
+                / "client-result.json"
+            )
+            run_id = "resume-test-non_streaming-c1-r1-direct"
+            command = run_matrix.build_command(
+                config, target, "non_streaming", 1, 1, 1, output, run_id
+            )
+            expected = run_matrix.RunCoordinate(
+                run_id=run_id,
+                label="direct",
+                mode="non_streaming",
+                concurrency=1,
+                repeat=1,
+                execution_order=1,
+                requests=1,
+            )
+            input_hashes = run_matrix.referenced_input_hashes(config, target)
+            expected_configuration = run_matrix.planned_result_configuration(
+                config, target, "non_streaming", 1, input_hashes
+            )
+            plan_sha256 = run_matrix.resume_plan_sha256(command, expected, input_hashes, None)
+            self.write_completed_run(output, command, expected, expected_configuration, plan_sha256)
+
+            with (
+                mock.patch.object(run_matrix, "execute") as execute,
+                mock.patch.object(run_matrix.time, "sleep") as sleep,
+            ):
+                run_matrix.run_matrix(config, output_root, set(), False, resume=True)
+
+            execute.assert_called_once()
+            self.assertIn("repeat-2", str(execute.call_args.args[2]))
+            sleep.assert_not_called()
+
+    def test_resume_settles_only_between_executed_remaining_runs(self) -> None:
+        config = {
+            "run_id": "settle-test",
+            "model": "test-model",
+            "dataset": "datasets/sample.jsonl",
+            "targets": [
+                {
+                    "label": "direct",
+                    "base_url": "http://127.0.0.1:18000",
+                    "batching_enabled": "not_applicable",
+                }
+            ],
+            "modes": ["non_streaming"],
+            "concurrency": [1],
+            "requests": 1,
+            "warmup": 0,
+            "repetitions": 3,
+            "settle_seconds": 5,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output_root = Path(directory)
+            target = config["targets"][0]
+            output = (
+                output_root
+                / "settle-test"
+                / "non_streaming"
+                / "c1"
+                / "repeat-1"
+                / "direct"
+                / "client-result.json"
+            )
+            run_id = "settle-test-non_streaming-c1-r1-direct"
+            command = run_matrix.build_command(
+                config, target, "non_streaming", 1, 1, 1, output, run_id
+            )
+            expected = run_matrix.RunCoordinate(
+                run_id=run_id,
+                label="direct",
+                mode="non_streaming",
+                concurrency=1,
+                repeat=1,
+                execution_order=1,
+                requests=1,
+            )
+            input_hashes = run_matrix.referenced_input_hashes(config, target)
+            expected_configuration = run_matrix.planned_result_configuration(
+                config, target, "non_streaming", 1, input_hashes
+            )
+            plan_sha256 = run_matrix.resume_plan_sha256(command, expected, input_hashes, None)
+            self.write_completed_run(output, command, expected, expected_configuration, plan_sha256)
+
+            with (
+                mock.patch.object(run_matrix, "execute") as execute,
+                mock.patch.object(run_matrix.time, "sleep") as sleep,
+            ):
+                run_matrix.run_matrix(config, output_root, set(), False, resume=True)
+
+            self.assertEqual(execute.call_count, 2)
+            self.assertIn("repeat-2", str(execute.call_args_list[0].args[2]))
+            self.assertIn("repeat-3", str(execute.call_args_list[1].args[2]))
+            sleep.assert_called_once_with(5.0)
 
 
 class SummaryTests(unittest.TestCase):
@@ -103,7 +456,10 @@ class ValidationTests(unittest.TestCase):
             "environment": {},
             "validity": {},
         }
-        self.assertTrue(any("TTFT" in error for error in validate_result.validate(result)))
+        errors = validate_result.validate(result)
+        self.assertTrue(any("TTFT" in error for error in errors))
+        self.assertIn("missing metrics", errors)
+        self.assertIn("configuration missing gateway_config_fingerprint", errors)
 
 
 class FakeServerSmokeTests(unittest.TestCase):

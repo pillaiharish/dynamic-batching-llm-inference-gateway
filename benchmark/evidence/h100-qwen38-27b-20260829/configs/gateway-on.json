@@ -1,5 +1,5 @@
 {
-  "gateway_version": "0.9.0",
+  "gateway_version": "0.8.0",
   "dynamic_batching_enabled": true,
   "dynamic_batch_max_size": 8,
   "dynamic_batch_max_wait_seconds": 0.005,

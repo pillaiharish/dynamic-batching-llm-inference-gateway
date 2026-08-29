@@ -1,0 +1,14 @@
+Captured UTC: 2026-08-29T11:00:26Z
+Host: Linux f7cc7acc07a3 6.8.0-138-generic x86_64
+OS: Ubuntu 22.04.5 LTS (Jammy Jellyfish)
+GPU: NVIDIA H100 80GB HBM3
+GPU at capture: 74035 MiB used / 81559 MiB total; 0% utilization; 124.58 W; 35 C
+NVIDIA driver: 610.57.04
+CUDA UMD: 13.3
+CUDA toolkit: 13.0 (V13.0.88)
+Go: go1.27.0 linux/amd64
+Python: 3.12.13
+vLLM: 0.26.0
+Transformers: 5.14.1
+Gateway SHA: c62661e67c94052f8b1269b73852424bec31be61
+Gateway version: 0.8.0

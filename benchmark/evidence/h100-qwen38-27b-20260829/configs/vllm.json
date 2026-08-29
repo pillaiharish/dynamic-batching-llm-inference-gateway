@@ -1,0 +1,17 @@
+{
+  "command": "vllm serve Qwen/Qwen3.8-27B --max-model-len 32768 --gpu-memory-utilization 0.90 --host 0.0.0.0 --port 18000 --max-num-seqs 16 --kv-cache-dtype fp8 --language-model-only --tensor-parallel-size 1 --compilation-config {\"cudagraph_capture_sizes\": [1,2,3,4,5,6,7,8]}",
+  "model": "Qwen/Qwen3.8-27B",
+  "vllm_version": "0.26.0",
+  "transformers_version": "5.14.1",
+  "tensor_parallel_size": 1,
+  "max_model_len": 32768,
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": 16,
+  "max_num_batched_tokens": 8192,
+  "kv_cache_dtype": "fp8",
+  "dtype": "bfloat16",
+  "quantization": null,
+  "language_model_only": true,
+  "chunked_prefill": "enabled",
+  "prefix_caching": "disabled"
+}

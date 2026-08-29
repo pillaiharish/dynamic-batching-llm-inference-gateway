@@ -1,6 +1,6 @@
 # Dynamic Batching LLM Inference Gateway
 
-This repository is the v0.8 milestone of a multi-tenant LLM inference gateway:
+This repository is the v0.9 milestone of a multi-tenant LLM inference gateway:
 
 > An OpenAI-compatible gateway with request validation, per-tenant limits, compatibility-aware
 > dynamic batching, health-aware backend routing, SSE streaming, Prometheus inference metrics, and
@@ -48,10 +48,11 @@ timestamps use the monotonic `time.perf_counter()` clock.
 > an additional HTTP-level aggregation layer and may be redundant for some workloads.
 
 The project therefore makes no general performance claim for gateway aggregation. Depending on a
-specific workload, it may help, hurt, or be neutral. v0.8 adds an endpoint-neutral Go Chat
-Completions client, deterministic corpus, closed-loop concurrency runner, raw Prometheus and GPU
-sampling, environment manifests/configuration fingerprints, rotating A/B/C matrices, result schema,
-validation, summaries, and plots. The primary comparison is:
+specific workload, it may help, hurt, or be neutral. The v0.8 benchmark suite introduced an
+endpoint-neutral Go Chat Completions client, deterministic corpus, closed-loop concurrency runner,
+raw Prometheus and GPU sampling, environment manifests/configuration fingerprints, rotating A/B/C
+matrices, result schema, validation, summaries, and plots. v0.9 adds fail-closed resumable execution
+and curated real-H100 evidence. The primary comparison is:
 
 ```text
 A = direct vLLM
@@ -59,7 +60,8 @@ B = gateway → vLLM, dynamic batching OFF
 C = gateway → vLLM, dynamic batching ON
 
 B - A = gateway overhead
-C - B = gateway batching effect
+C - B = end-to-end effect of gateway-side compatible request aggregation
+        through vLLM's batch endpoint
 ```
 
 Comparing only A with C is invalid because it conflates gateway overhead with batching behavior.
@@ -89,8 +91,15 @@ configuration and admission controls, A/B/C matrix, official vLLM benchmark comm
 failure runbooks, artifacts, validation, and local fake-server smoke. Large raw runs are ignored;
 only deliberately reviewed artifacts belong under [benchmark/evidence](benchmark/evidence/README.md).
 
-Real-GPU A/B/C performance evidence has not yet been collected. No throughput, latency, GPU-cost,
-or utilization percentage in this repository is synthetic or implied by the fake-server tests.
+The repository now includes a deliberately curated
+[H100 Qwen3.8-27B A/B/C sweep](benchmark/evidence/h100-qwen38-27b-20260829/README.md). For that exact
+non-streaming workload, gateway batching helped at sustained concurrency 4–8 but was inconsistent at
+higher concurrency. This is scoped experimental evidence, not a general performance or cost claim;
+dynamic batching remains disabled by default.
+
+The experiment was produced by gateway and benchmark harness v0.8.0 at
+`c62661e67c94052f8b1269b73852424bec31be61`; this repository milestone advances the project and
+harness to v0.9.0 without rewriting that historical metadata.
 
 ## Supported Chat Completions subset
 
@@ -120,7 +129,7 @@ failures, not gateway-client authentication failures.
 
 ## Dynamic batching
 
-> Dynamic batching in v0.8 means gateway-side aggregation of compatible admitted non-streaming
+> Dynamic batching here means gateway-side aggregation of compatible admitted non-streaming
 > requests into one vLLM `/v1/chat/completions/batch` HTTP request.
 
 Clients still call only `POST /v1/chat/completions` and receive ordinary single-request Chat
@@ -152,10 +161,10 @@ DYNAMIC_BATCH_MAX_WAIT_SECONDS=0.005
 ```
 
 The maximum size validates from 2 through 64 and maximum wait validates in the interval `(0, 1]`
-seconds, even while batching is disabled. v0.8 makes gateway dynamic batching functionally real but
+seconds, even while batching is disabled. Gateway dynamic batching is functionally real but
 does not claim that it improves throughput or latency. vLLM already performs continuous batching
 internally, so gateway-side request aggregation may improve, hurt, or have negligible performance
-impact depending on workload and deployment. The v0.8 benchmark suite measures that impact without
+impact depending on workload and deployment. The benchmark suite measures that impact without
 presupposing its direction.
 
 ### Eligibility and compatibility
@@ -183,7 +192,7 @@ automatically. Field presence is preserved: omitting `temperature` is not assume
 explicitly sending `temperature=1.0`. Compatibility keys may contain user-controlled generation
 fields, so they are neither logged nor exposed as metric labels.
 
-v0.8 deliberately batches only within one tenant. Cross-tenant batching is excluded to avoid
+The gateway deliberately batches only within one tenant. Cross-tenant batching is excluded to avoid
 creating a shared batch-level failure domain across tenants. This tradeoff may reduce aggregation
 opportunities and is intentional.
 
@@ -205,7 +214,7 @@ reindexed to zero, together with safe batch fields such as `id`, `object`, `crea
 `system_fingerprint` when present. Batched members share the upstream vLLM batch response ID because
 the gateway does not fabricate per-member upstream IDs.
 
-Current vLLM batch usage is aggregate across the entire batch. v0.8 therefore does not copy
+Current vLLM batch usage is aggregate across the entire batch. The gateway therefore does not copy
 aggregate `usage` into each demultiplexed client response and does not divide it across members.
 Aggregate completion tokens remain valid for gateway-level observed output TPS and are counted
 exactly once. Per-member accounting coverage is recorded as `aggregate_only` when that aggregate is
@@ -566,7 +575,7 @@ in `observability/grafana/dashboards/gateway-overview.json`. Histograms are used
 client-side quantile summaries so replicas can be aggregated later and p50/p95/p99 can be selected
 at query time.
 
-v0.8 does not configure `prometheus-client` multiprocess mode. Metrics represent one gateway
+The gateway does not configure `prometheus-client` multiprocess mode. Metrics represent one gateway
 process, matching the current process-local admission, batching, and routing architecture. If the
 gateway later runs with multiple worker processes, aggregation semantics—especially gauges—must be
 revisited. The gateway does not expose synthetic GPU, KV-cache, or vLLM scheduler metrics and does
@@ -672,11 +681,11 @@ python -m unittest discover -s benchmark/tests
 ## Docker
 
 ```bash
-docker build -t inference-gateway:v0.8 .
+docker build -t inference-gateway:v0.9 .
 docker run --rm -p 8080:8080 \
   -e 'BACKENDS_JSON={"local":{"base_url":"http://host.docker.internal:8000"}}' \
   -e 'TENANTS_JSON={"local":{"api_key":"local-example-key","max_inflight":2,"max_queue":4}}' \
-  inference-gateway:v0.8
+  inference-gateway:v0.9
 ```
 
 The image runs as a non-root user. No vLLM server or GPU stack is bundled into the image.
@@ -684,7 +693,7 @@ The image runs as a non-root user. No vLLM server or GPU stack is bundled into t
 ## Routing limitations
 
 Routing health and inflight state are process-local and are not shared between gateway replicas.
-Configured backends are assumed interchangeable for the models exposed through this gateway; v0.8
+Configured backends are assumed interchangeable for the models exposed through this gateway; it
 does not route by model or LoRA adapter. Backend inflight means requests assigned by this gateway
 whose backend operation has not finished. It is not vLLM scheduler state, GPU utilization, KV-cache
 occupancy, prefix-cache affinity, token load, latency, or a prediction of backend capacity. Health is
@@ -693,7 +702,7 @@ No generation request is automatically retried on another member.
 
 ## Not implemented
 
-The v0.8 API does not support WebSockets, stream reconnection/resume, automatic generation retries,
+The current API does not support WebSockets, stream reconnection/resume, automatic generation retries,
 cross-tenant or streaming batching, token-budget or prompt-length batching, per-member batch retry,
 tools/function calls, multimodal content, structured outputs, RPS limiting, token/billing quotas,
 JWT/OAuth, persistent tenants, model/GPU/KV/token/cache/prefix-aware or predictive routing and

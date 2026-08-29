@@ -1,0 +1,80 @@
+diff --git a/benchmark/scripts/run_matrix.py b/benchmark/scripts/run_matrix.py
+index a5ff5de..82f53be 100644
+--- a/benchmark/scripts/run_matrix.py
++++ b/benchmark/scripts/run_matrix.py
+@@ -207,8 +207,28 @@ def execute(command: list[str], target: dict[str, Any], output: Path, dry_run: b
+         raise RuntimeError(f"benchmark failed for {target['label']}; see {output.parent}")
+ 
+ 
++def completed_run(output: Path) -> bool:
++    """Return true only for a parseable result with a successful process record."""
++    process = output.parent / "process.json"
++    if not output.is_file() or not process.is_file():
++        return False
++    try:
++        with output.open(encoding="utf-8") as file:
++            result = json.load(file)
++        with process.open(encoding="utf-8") as file:
++            metadata = json.load(file)
++    except (OSError, json.JSONDecodeError):
++        return False
++    summary = result.get("summary", {})
++    return (
++        metadata.get("exit_code") == 0
++        and summary.get("successful", 0) > 0
++        and summary.get("failed", 0) == 0
++    )
++
++
+ def run_matrix(
+-    config: dict[str, Any], output_root: Path, selected: set[str], dry_run: bool
++    config: dict[str, Any], output_root: Path, selected: set[str], dry_run: bool, resume: bool
+ ) -> None:
+     matrix_id = config.get("run_id") or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+     targets = [
+@@ -225,9 +245,6 @@ def run_matrix(
+         for concurrency in config["concurrency"]:
+             for repeat in range(1, int(config["repetitions"]) + 1):
+                 for order, target in enumerate(rotated(targets, repeat), start=1):
+-                    if not first and settling > 0 and not dry_run:
+-                        time.sleep(settling)
+-                    first = False
+                     run_id = f"{matrix_id}-{mode}-c{concurrency}-r{repeat}-{target['label']}"
+                     output = (
+                         output_root
+@@ -238,6 +255,12 @@ def run_matrix(
+                         / target["label"]
+                         / "client-result.json"
+                     )
++                    if resume and completed_run(output):
++                        print(f"skipping completed run: {output}", flush=True)
++                        continue
++                    if not first and settling > 0 and not dry_run:
++                        time.sleep(settling)
++                    first = False
+                     command = build_command(
+                         config, target, mode, int(concurrency), repeat, order, output, run_id
+                     )
+@@ -250,10 +273,21 @@ def main() -> int:
+     parser.add_argument("--output-root", type=Path, default=BENCHMARK_ROOT / "results")
+     parser.add_argument("--target", action="append", default=[], help="run only this label")
+     parser.add_argument("--dry-run", action="store_true")
++    parser.add_argument(
++        "--resume",
++        action="store_true",
++        help="skip runs with parseable results and a successful process record",
++    )
+     arguments = parser.parse_args()
+     try:
+         config = load_config(arguments.config)
+-        run_matrix(config, arguments.output_root, set(arguments.target), arguments.dry_run)
++        run_matrix(
++            config,
++            arguments.output_root,
++            set(arguments.target),
++            arguments.dry_run,
++            arguments.resume,
++        )
+     except (OSError, ValueError, RuntimeError) as error:
+         print(f"run_matrix.py: {error}", file=sys.stderr)
+         return 1

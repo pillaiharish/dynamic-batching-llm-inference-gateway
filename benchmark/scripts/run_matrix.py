@@ -4,17 +4,34 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shlex
 import subprocess
 import sys
 import time
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import validate_result
+
 BENCHMARK_ROOT = Path(__file__).resolve().parents[1]
+
+
+@dataclass(frozen=True)
+class RunCoordinate:
+    """Expected identity and request accounting for one matrix run."""
+
+    run_id: str
+    label: str
+    mode: str
+    concurrency: int
+    repeat: int
+    execution_order: int
+    requests: int
 
 
 def expand(value: Any) -> Any:
@@ -170,7 +187,91 @@ def safe_command(command: list[str]) -> str:
     return shlex.join(command)
 
 
-def execute(command: list[str], target: dict[str, Any], output: Path, dry_run: bool) -> None:
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def referenced_input_hashes(config: dict[str, Any], target: dict[str, Any]) -> dict[str, str]:
+    """Hash every file input whose contents can affect a retained result."""
+    references = {
+        "dataset": config.get("dataset"),
+        "environment": config.get("environment"),
+        "gateway_config": target.get("gateway_config"),
+        "vllm_config": config.get("vllm_config"),
+    }
+    return {
+        name: sha256_file(resolve_path(str(value))) for name, value in references.items() if value
+    }
+
+
+def resume_plan_sha256(
+    command: list[str],
+    expected: RunCoordinate,
+    input_hashes: dict[str, str],
+    credential_env_name: str | None,
+) -> str:
+    """Fingerprint the secret-free execution plan and content-addressed inputs."""
+    plan = {
+        "schema_version": 1,
+        "command": command,
+        "coordinate": asdict(expected),
+        "input_sha256": input_hashes,
+        "credential_env_name": credential_env_name,
+    }
+    normalized = json.dumps(plan, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def planned_result_configuration(
+    config: dict[str, Any],
+    target: dict[str, Any],
+    mode: str,
+    concurrency: int,
+    input_hashes: dict[str, str],
+) -> dict[str, Any]:
+    generation = config.get("generation", {})
+    expected = {
+        "base_url": str(target["base_url"]),
+        "endpoint": str(config.get("endpoint", "/v1/chat/completions")),
+        "model": str(config["model"]),
+        "mode": mode,
+        "concurrency": concurrency,
+        "requests": requests_for(config, concurrency),
+        "warmup": int(config.get("warmup", 20)),
+        "dataset_sha256": input_hashes["dataset"],
+        "temperature": generation.get("temperature", 0),
+        "top_p": generation.get("top_p", 1),
+        "max_tokens": int(generation.get("max_tokens", 128)),
+        "seed": int(generation.get("seed", 1)),
+        "n": 1,
+        "stream": mode == "streaming",
+        "stream_include_usage": mode == "streaming",
+        "batching_enabled": str(target.get("batching_enabled", "not_applicable")),
+        "prefix_caching": str(config.get("prefix_caching", "unknown")),
+    }
+    for field, convert in [
+        ("batch_max_size", int),
+        ("batch_max_wait_seconds", float),
+        ("tenant_max_inflight", int),
+        ("global_max_inflight", int),
+    ]:
+        value = target.get(field, config.get(field))
+        if value is not None and value != "":
+            expected[field] = convert(value)
+    return expected
+
+
+def execute(
+    command: list[str],
+    target: dict[str, Any],
+    output: Path,
+    dry_run: bool,
+    plan_sha256: str,
+) -> None:
     print(safe_command(command), flush=True)
     if dry_run:
         return
@@ -198,6 +299,7 @@ def execute(command: list[str], target: dict[str, Any], output: Path, dry_run: b
         "ended_utc": datetime.now(UTC).isoformat(),
         "exit_code": completed.returncode,
         "command": command,
+        "resume_plan_sha256": plan_sha256,
         "credential_source": "environment" if credential_name else "none",
     }
     (output.parent / "process.json").write_text(
@@ -207,8 +309,62 @@ def execute(command: list[str], target: dict[str, Any], output: Path, dry_run: b
         raise RuntimeError(f"benchmark failed for {target['label']}; see {output.parent}")
 
 
+def completed_run(
+    output: Path,
+    command: list[str],
+    expected: RunCoordinate,
+    expected_configuration: dict[str, Any],
+    plan_sha256: str,
+) -> bool:
+    """Accept only a valid, successful result matching the exact planned run."""
+    process = output.parent / "process.json"
+    if not output.is_file() or not process.is_file():
+        return False
+    try:
+        with output.open(encoding="utf-8") as file:
+            result = json.load(file)
+        with process.open(encoding="utf-8") as file:
+            metadata = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(result, dict) or not isinstance(metadata, dict):
+        return False
+    if validate_result.validate(result):
+        return False
+    result_metadata = result.get("metadata", {})
+    configuration = result.get("configuration", {})
+    summary = result.get("summary", {})
+    per_request = result.get("per_request", [])
+    validity = result.get("validity", {})
+    return (
+        metadata.get("exit_code") == 0
+        and metadata.get("command") == command
+        and metadata.get("resume_plan_sha256") == plan_sha256
+        and result_metadata.get("run_id") == expected.run_id
+        and result_metadata.get("label") == expected.label
+        and result_metadata.get("repeat") == expected.repeat
+        and result_metadata.get("execution_order") == expected.execution_order
+        and configuration.get("mode") == expected.mode
+        and configuration.get("concurrency") == expected.concurrency
+        and configuration.get("requests") == expected.requests
+        and all(
+            configuration.get(field) == value for field, value in expected_configuration.items()
+        )
+        and summary.get("attempted") == expected.requests
+        and summary.get("successful") == expected.requests
+        and summary.get("failed") == 0
+        and isinstance(per_request, list)
+        and len(per_request) == expected.requests
+        and validity.get("valid") is True
+    )
+
+
 def run_matrix(
-    config: dict[str, Any], output_root: Path, selected: set[str], dry_run: bool
+    config: dict[str, Any],
+    output_root: Path,
+    selected: set[str],
+    dry_run: bool,
+    resume: bool = False,
 ) -> None:
     matrix_id = config.get("run_id") or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     targets = [
@@ -225,10 +381,8 @@ def run_matrix(
         for concurrency in config["concurrency"]:
             for repeat in range(1, int(config["repetitions"]) + 1):
                 for order, target in enumerate(rotated(targets, repeat), start=1):
-                    if not first and settling > 0 and not dry_run:
-                        time.sleep(settling)
-                    first = False
                     run_id = f"{matrix_id}-{mode}-c{concurrency}-r{repeat}-{target['label']}"
+                    request_count = requests_for(config, int(concurrency))
                     output = (
                         output_root
                         / matrix_id
@@ -241,7 +395,38 @@ def run_matrix(
                     command = build_command(
                         config, target, mode, int(concurrency), repeat, order, output, run_id
                     )
-                    execute(command, target, output, dry_run)
+                    expected = RunCoordinate(
+                        run_id=run_id,
+                        label=str(target["label"]),
+                        mode=mode,
+                        concurrency=int(concurrency),
+                        repeat=repeat,
+                        execution_order=order,
+                        requests=request_count,
+                    )
+                    input_hashes = referenced_input_hashes(config, target)
+                    expected_configuration = planned_result_configuration(
+                        config, target, mode, int(concurrency), input_hashes
+                    )
+                    plan_sha256 = resume_plan_sha256(
+                        command,
+                        expected,
+                        input_hashes,
+                        target.get("auth_token_env"),
+                    )
+                    if resume and completed_run(
+                        output,
+                        command,
+                        expected,
+                        expected_configuration,
+                        plan_sha256,
+                    ):
+                        print(f"skipping completed run: {output}", flush=True)
+                        continue
+                    if not first and settling > 0 and not dry_run:
+                        time.sleep(settling)
+                    first = False
+                    execute(command, target, output, dry_run, plan_sha256)
 
 
 def main() -> int:
@@ -250,10 +435,21 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=BENCHMARK_ROOT / "results")
     parser.add_argument("--target", action="append", default=[], help="run only this label")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="skip complete, valid, successful runs matching the planned command",
+    )
     arguments = parser.parse_args()
     try:
         config = load_config(arguments.config)
-        run_matrix(config, arguments.output_root, set(arguments.target), arguments.dry_run)
+        run_matrix(
+            config,
+            arguments.output_root,
+            set(arguments.target),
+            arguments.dry_run,
+            arguments.resume,
+        )
     except (OSError, ValueError, RuntimeError) as error:
         print(f"run_matrix.py: {error}", file=sys.stderr)
         return 1

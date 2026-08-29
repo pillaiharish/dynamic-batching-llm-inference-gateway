@@ -13,8 +13,10 @@ helps, hurts, or is neutral. A negative result is valid evidence. At concurrency
 gateway batcher normally adds its timeout wait because no compatible peer arrives. At moderate or
 high concurrency, native vLLM scheduling may already capture most available batching benefit.
 
-No real-GPU A/B/C performance evidence has been collected in this repository. The fake-server
-tests prove protocol and measurement behavior only; they are not synthetic performance evidence.
+Curated real-GPU evidence is available for one
+[H100 Qwen3.8-27B A/B/C sweep](evidence/h100-qwen38-27b-20260829/README.md). Its conclusions are
+limited to the recorded non-streaming workload and deployment. The fake-server tests still prove
+protocol and measurement behavior only; they are not synthetic performance evidence.
 
 ## Scientific question and three-arm design
 
@@ -331,14 +333,27 @@ python scripts/run_matrix.py configs/concurrency-sweep.json --dry-run
 python scripts/run_matrix.py configs/concurrency-sweep.json
 ```
 
+If a matrix process is interrupted, rerun the same configuration and output root with `--resume`.
+The runner skips only results whose saved command, run coordinate, and secret-free plan fingerprint
+exactly match the reconstructed plan and whose process and request accounting show a complete,
+valid, failure-free run. The fingerprint includes SHA-256 values for the dataset and referenced
+configuration/environment files, so changing a file in place forces a rerun. Missing, partial,
+malformed, failed, invalid, legacy, or configuration-drifted results run again. Settling delays
+apply only between runs that are actually executed, with no delay before the first remaining run.
+
+```bash
+python scripts/run_matrix.py configs/concurrency-sweep.json --resume
+```
+
 The example uses independently configured OFF and ON gateway processes so matrix metadata matches
 server state. They must run the same commit and target the same vLLM process; do not run traffic to
 both simultaneously. The runner never edits source, restarts services, or automatically tunes
-anything.
+anything. Resume is local artifact validation and deterministic plan reconstruction, not a
+transactional checkpoint or distributed recovery protocol.
 
 ### Admission sizing is part of the experiment
 
-Admission happens before batching, and v0.8 batching is tenant-local. If
+Admission happens before batching, and gateway batching is tenant-local. If
 `DYNAMIC_BATCH_MAX_SIZE=8`, both the benchmark tenant's `max_inflight` and
 `GLOBAL_MAX_INFLIGHT` must be at least eight, preferably with headroom for concurrent batches. A
 limit below batch size prevents intended aggregation and invalidates policy interpretation.
