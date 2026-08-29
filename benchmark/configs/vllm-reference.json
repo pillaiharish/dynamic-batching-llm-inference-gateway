@@ -1,0 +1,13 @@
+{
+  "command": "vllm serve Qwen/Qwen2.5-0.5B-Instruct",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "dtype": "auto",
+  "quantization": "none",
+  "tensor_parallel_size": 1,
+  "max_model_len": 4096,
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": 128,
+  "max_num_batched_tokens": 4096,
+  "chunked_prefill": "vLLM default; record observed version behavior",
+  "prefix_caching": "disabled via --no-enable-prefix-caching"
+}

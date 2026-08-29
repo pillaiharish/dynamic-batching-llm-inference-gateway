@@ -1,0 +1,12 @@
+{
+  "gateway_version": "0.8.0",
+  "dynamic_batching_enabled": true,
+  "dynamic_batch_max_size": 8,
+  "dynamic_batch_max_wait_seconds": 0.005,
+  "tenant_max_inflight": 128,
+  "tenant_max_queue": 256,
+  "global_max_inflight": 128,
+  "global_max_queue": 256,
+  "admission_queue_timeout_seconds": 120,
+  "backend_count": 1
+}

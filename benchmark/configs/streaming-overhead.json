@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "model": "${BENCH_MODEL}",
+  "dataset": "datasets/sample.jsonl",
+  "endpoint": "/v1/chat/completions",
+  "modes": ["streaming"],
+  "concurrency": [1, 4, 8, 16, 32, 64],
+  "requests": "auto",
+  "warmup": 20,
+  "repetitions": 3,
+  "settle_seconds": 5,
+  "timeout": "120s",
+  "sample_interval": "500ms",
+  "gpu_sample_interval": "500ms",
+  "prefix_caching": "disabled",
+  "vllm_version": "${BENCH_VLLM_VERSION}",
+  "gateway_git_sha": "${BENCH_GATEWAY_GIT_SHA}",
+  "vllm_config": "${BENCH_VLLM_CONFIG}",
+  "environment": "${BENCH_ENVIRONMENT_JSON}",
+  "generation": {
+    "temperature": 0,
+    "top_p": 1,
+    "max_tokens": 128,
+    "seed": 1
+  },
+  "targets": [
+    {
+      "label": "direct",
+      "base_url": "${BENCH_VLLM_BASE_URL}",
+      "vllm_metrics_url": "${BENCH_VLLM_METRICS_URL}",
+      "output_token_counter": "vllm:generation_tokens",
+      "batching_enabled": "not_applicable"
+    },
+    {
+      "label": "gateway_no_batch",
+      "base_url": "${BENCH_GATEWAY_OFF_BASE_URL}",
+      "auth_token_env": "BENCH_GATEWAY_AUTH_TOKEN",
+      "gateway_metrics_url": "${BENCH_GATEWAY_OFF_METRICS_URL}",
+      "vllm_metrics_url": "${BENCH_VLLM_METRICS_URL}",
+      "output_token_counter": "gateway_observed_output_tokens_total",
+      "batching_enabled": "false",
+      "tenant_max_inflight": 128,
+      "global_max_inflight": 128,
+      "gateway_config": "configs/gateway-off.json"
+    }
+  ]
+}
