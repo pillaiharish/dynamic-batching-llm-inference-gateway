@@ -31,10 +31,12 @@ async def test_generate_batch_preserves_order() -> None:
 
     responses = await backend.generate_batch(["one", "two"])
 
-    assert responses == [
+    assert responses.responses == [
         {"input": "one", "output": "fake:one"},
         {"input": "two", "output": "fake:two"},
     ]
+    assert responses.aggregate_completion_tokens == 0
+    assert responses.usage_result == "observed"
 
 
 @pytest.mark.asyncio

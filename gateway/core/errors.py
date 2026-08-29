@@ -172,6 +172,14 @@ class AdmissionUnavailableError(GatewayError):
     status_code = 503
 
 
+class BatchingUnavailableError(GatewayError):
+    """Raised when dynamic batching stops during application shutdown."""
+
+    code = "batching_unavailable"
+    default_message = "Dynamic batching is unavailable"
+    status_code = 503
+
+
 def _request_id_from(request: Request) -> str | None:
     return get_request_id() or getattr(request.state, "request_id", None)
 

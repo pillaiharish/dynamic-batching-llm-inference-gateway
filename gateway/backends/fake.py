@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
 
-from gateway.backends.base import BackendStream
+from gateway.backends.base import BackendBatchResult, BackendStream
 from gateway.schemas.chat import ChatCompletionRequest
 
 
@@ -77,8 +77,15 @@ class FakeBackend:
         )
         return self.last_stream
 
-    async def generate_batch(self, requests: list[Any]) -> list[dict[str, Any]]:
-        return [await self.generate(request) for request in requests]
+    async def generate_batch(self, requests: list[Any]) -> BackendBatchResult:
+        responses = [await self.generate(request) for request in requests]
+        for response in responses:
+            response.pop("usage", None)
+        return BackendBatchResult(
+            responses=responses,
+            aggregate_completion_tokens=0,
+            usage_result="observed",
+        )
 
     async def check_health(self) -> bool:
         return not self.closed

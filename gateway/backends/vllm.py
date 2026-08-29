@@ -5,11 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Callable
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 import httpx2
 
-from gateway.backends.base import BackendStream
+from gateway.backends.base import BackendBatchResult, BackendStream
 from gateway.config import BackendConfig
 from gateway.core.errors import (
     BackendCapabilityError,
@@ -188,9 +188,55 @@ class VLLMBackend:
         self._active_streams.add(stream)
         return stream
 
-    async def generate_batch(self, requests: list[Any]) -> list[Any]:
-        """Reject backend batching until the batching milestone is implemented."""
-        raise BackendCapabilityError("Batch generation is not supported")
+    async def generate_batch(self, requests: list[Any]) -> BackendBatchResult:
+        """Send one compatible batch request and strictly demultiplex its response."""
+        if not requests or any(
+            not isinstance(request, ChatCompletionRequest) for request in requests
+        ):
+            raise BackendCapabilityError("Batch generation requires chat completion requests")
+
+        typed_requests = cast(list[ChatCompletionRequest], requests)
+        if any(request.stream or request.n != 1 for request in typed_requests):
+            raise BackendCapabilityError("Batch generation requires stream=false and n=1")
+        shared_payload = typed_requests[0].to_batch_shared_payload()
+        if any(
+            request.to_batch_shared_payload() != shared_payload for request in typed_requests[1:]
+        ):
+            raise BackendCapabilityError("Batch generation requires compatible shared fields")
+
+        batch_payload = dict(shared_payload)
+        batch_payload["messages"] = [
+            request.to_upstream_payload()["messages"] for request in typed_requests
+        ]
+        try:
+            response = await self._client.post(
+                "v1/chat/completions/batch",
+                json=batch_payload,
+            )
+        except httpx2.TimeoutException as exc:
+            raise BackendTimeoutError() from exc
+        except httpx2.ConnectError as exc:
+            raise BackendUnavailableError() from exc
+        except httpx2.RequestError as exc:
+            raise BackendUnavailableError() from exc
+
+        logger.info(
+            "vLLM batch request completed",
+            extra={
+                "backend": "vllm",
+                "backend_id": self.backend_id,
+                "upstream_status": response.status_code,
+                "batch_size": len(typed_requests),
+            },
+        )
+        self._raise_for_upstream_status(response.status_code)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise BackendProtocolError() from exc
+        if not isinstance(payload, dict):
+            raise BackendProtocolError()
+        return self._demultiplex_batch_response(payload, len(typed_requests))
 
     async def check_health(self) -> bool:
         """Probe vLLM's control-plane health endpoint without generation traffic."""
@@ -218,3 +264,50 @@ class VLLMBackend:
         if status_code in {401, 403}:
             raise BackendConfigurationError()
         raise BackendHTTPError()
+
+    @staticmethod
+    def _demultiplex_batch_response(
+        payload: dict[str, Any],
+        batch_size: int,
+    ) -> BackendBatchResult:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or len(choices) != batch_size:
+            raise BackendProtocolError()
+
+        by_index: dict[int, dict[str, Any]] = {}
+        for choice in choices:
+            if not isinstance(choice, dict):
+                raise BackendProtocolError()
+            index = choice.get("index")
+            if not isinstance(index, int) or isinstance(index, bool):
+                raise BackendProtocolError()
+            if index < 0 or index >= batch_size or index in by_index:
+                raise BackendProtocolError()
+            by_index[index] = choice
+        if set(by_index) != set(range(batch_size)):
+            raise BackendProtocolError()
+
+        safe_batch_fields = {
+            key: payload[key]
+            for key in ("id", "object", "created", "model", "system_fingerprint")
+            if key in payload
+        }
+        responses: list[dict[str, Any]] = []
+        for index in range(batch_size):
+            member_choice = dict(by_index[index])
+            member_choice["index"] = 0
+            responses.append({**safe_batch_fields, "choices": [member_choice]})
+
+        if "usage" not in payload:
+            return BackendBatchResult(responses, None, "missing")
+        usage = payload.get("usage")
+        if not isinstance(usage, dict) or "completion_tokens" not in usage:
+            return BackendBatchResult(responses, None, "invalid")
+        completion_tokens = usage.get("completion_tokens")
+        if (
+            not isinstance(completion_tokens, int)
+            or isinstance(completion_tokens, bool)
+            or completion_tokens < 0
+        ):
+            return BackendBatchResult(responses, None, "invalid")
+        return BackendBatchResult(responses, completion_tokens, "observed")

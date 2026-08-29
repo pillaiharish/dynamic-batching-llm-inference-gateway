@@ -49,6 +49,12 @@ EXPECTED_METRICS = {
     "gateway_backend_healthy",
     "gateway_backend_inflight",
     "gateway_backend_requests_total",
+    "gateway_batch_eligibility_total",
+    "gateway_batches_total",
+    "gateway_batch_size",
+    "gateway_batch_wait_seconds",
+    "gateway_batch_pending",
+    "gateway_batch_inflight",
 }
 
 

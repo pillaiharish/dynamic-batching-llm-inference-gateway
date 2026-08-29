@@ -8,8 +8,10 @@ from fastapi.responses import JSONResponse, Response
 from gateway.admission.controller import AdmissionController, AdmissionLease
 from gateway.auth.tenants import TenantContext, authenticate_tenant
 from gateway.backends.base import BackendStream, InferenceBackend
+from gateway.batching.dynamic import DynamicBatcher
+from gateway.batching.eligibility import batching_eligibility
 from gateway.config import Settings
-from gateway.core.errors import InvalidRequestError
+from gateway.core.errors import BatchingUnavailableError, InvalidRequestError
 from gateway.observability.metrics import GatewayMetrics
 from gateway.observability.sse import SSEMetricsObserver
 from gateway.schemas.chat import ChatCompletionRequest
@@ -38,6 +40,11 @@ async def create_chat_completion(
     metrics = cast(GatewayMetrics, request.app.state.metrics)
     request.state.metrics_mode = "streaming" if payload.stream else "non_streaming"
     _enforce_configured_limits(payload, settings)
+    eligibility = batching_eligibility(
+        payload,
+        enabled=settings.dynamic_batching_enabled,
+    )
+    metrics.batch_eligibility_observed(eligibility.decision, eligibility.reason)
 
     if payload.stream:
         return await _create_streaming_completion(
@@ -50,8 +57,15 @@ async def create_chat_completion(
 
     async with admission.admit(tenant) as lease:
         request.state.admission_result = "queued" if lease.was_queued else "admitted"
-        response = cast(dict[str, Any], await backend.generate(payload))
-    metrics.observe_non_streaming_usage(response)
+        if eligibility.eligible:
+            batcher = cast(DynamicBatcher | None, request.app.state.dynamic_batcher)
+            if batcher is None:
+                raise BatchingUnavailableError()
+            response = (await batcher.submit(tenant.tenant_id, payload)).response
+        else:
+            response = cast(dict[str, Any], await backend.generate(payload))
+    if not eligibility.eligible:
+        metrics.observe_non_streaming_usage(response)
     return JSONResponse(content=response)
 
 
