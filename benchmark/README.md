@@ -331,10 +331,23 @@ python scripts/run_matrix.py configs/concurrency-sweep.json --dry-run
 python scripts/run_matrix.py configs/concurrency-sweep.json
 ```
 
+If a matrix process is interrupted, rerun the same configuration and output root with `--resume`.
+The runner skips only results whose saved command, run coordinate, and secret-free plan fingerprint
+exactly match the reconstructed plan and whose process and request accounting show a complete,
+valid, failure-free run. The fingerprint includes SHA-256 values for the dataset and referenced
+configuration/environment files, so changing a file in place forces a rerun. Missing, partial,
+malformed, failed, invalid, legacy, or configuration-drifted results run again. Settling delays
+apply only between runs that are actually executed, with no delay before the first remaining run.
+
+```bash
+python scripts/run_matrix.py configs/concurrency-sweep.json --resume
+```
+
 The example uses independently configured OFF and ON gateway processes so matrix metadata matches
 server state. They must run the same commit and target the same vLLM process; do not run traffic to
 both simultaneously. The runner never edits source, restarts services, or automatically tunes
-anything.
+anything. Resume is local artifact validation and deterministic plan reconstruction, not a
+transactional checkpoint or distributed recovery protocol.
 
 ### Admission sizing is part of the experiment
 
