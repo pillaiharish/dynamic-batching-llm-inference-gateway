@@ -107,6 +107,66 @@ class MatrixTests(unittest.TestCase):
         self.assertEqual(run_matrix.requests_for({"requests": "auto"}, 1), 200)
         self.assertEqual(run_matrix.requests_for({"requests": "auto"}, 64), 1280)
 
+    def test_resume_requires_stable_matrix_id_before_execution(self) -> None:
+        with (
+            mock.patch.object(run_matrix, "execute") as execute,
+            self.assertRaisesRegex(ValueError, "--resume requires a stable matrix ID"),
+        ):
+            run_matrix.run_matrix({}, Path("unused"), set(), False, resume=True)
+        execute.assert_not_called()
+
+    def test_conflicting_matrix_ids_fail_before_execution(self) -> None:
+        with (
+            mock.patch.object(run_matrix, "execute") as execute,
+            self.assertRaisesRegex(ValueError, "must match"),
+        ):
+            run_matrix.run_matrix(
+                {"run_id": "matrix-a"},
+                Path("unused"),
+                set(),
+                False,
+                matrix_id="matrix-b",
+            )
+        execute.assert_not_called()
+
+    def test_matching_matrix_ids_succeed(self) -> None:
+        config = {
+            "run_id": "matrix-a",
+            "model": "test-model",
+            "dataset": "datasets/sample.jsonl",
+            "targets": [{"label": "direct", "base_url": "http://127.0.0.1:18000"}],
+            "concurrency": [1],
+            "requests": 1,
+            "repetitions": 1,
+        }
+        with mock.patch.object(run_matrix, "execute") as execute:
+            run_matrix.run_matrix(config, Path("unused"), set(), True, matrix_id="matrix-a")
+        execute.assert_called_once()
+        self.assertIn("matrix-a", execute.call_args.args[2].parts)
+
+    def test_invalid_matrix_ids_are_rejected(self) -> None:
+        for matrix_id in ["", ".", "../x", "a/b", r"a\b", "/absolute"]:
+            with (
+                self.subTest(matrix_id=matrix_id),
+                self.assertRaisesRegex(ValueError, "matrix ID must contain only"),
+            ):
+                run_matrix.resolve_matrix_id(None, matrix_id, False)
+
+    def test_non_resume_without_identity_generates_timestamp(self) -> None:
+        config = {
+            "model": "test-model",
+            "dataset": "datasets/sample.jsonl",
+            "targets": [{"label": "direct", "base_url": "http://127.0.0.1:18000"}],
+            "concurrency": [1],
+            "requests": 1,
+            "repetitions": 1,
+        }
+        output_root = Path("unused")
+        with mock.patch.object(run_matrix, "execute") as execute:
+            run_matrix.run_matrix(config, output_root, set(), True)
+        matrix_id = execute.call_args.args[2].relative_to(output_root).parts[0]
+        self.assertRegex(matrix_id, r"^\d{8}T\d{6}Z$")
+
     def test_batch_admission_validation(self) -> None:
         with self.assertRaises(ValueError):
             run_matrix.validate_admission(
@@ -276,7 +336,6 @@ class MatrixTests(unittest.TestCase):
 
     def test_resume_skips_completed_run_without_initial_settling_delay(self) -> None:
         config = {
-            "run_id": "resume-test",
             "model": "test-model",
             "dataset": "datasets/sample.jsonl",
             "targets": [
@@ -329,10 +388,18 @@ class MatrixTests(unittest.TestCase):
                 mock.patch.object(run_matrix, "execute") as execute,
                 mock.patch.object(run_matrix.time, "sleep") as sleep,
             ):
-                run_matrix.run_matrix(config, output_root, set(), False, resume=True)
+                run_matrix.run_matrix(
+                    config,
+                    output_root,
+                    set(),
+                    False,
+                    resume=True,
+                    matrix_id="resume-test",
+                )
 
             execute.assert_called_once()
             self.assertIn("repeat-2", str(execute.call_args.args[2]))
+            self.assertIn(output_root / "resume-test", execute.call_args.args[2].parents)
             sleep.assert_not_called()
 
     def test_resume_settles_only_between_executed_remaining_runs(self) -> None:
