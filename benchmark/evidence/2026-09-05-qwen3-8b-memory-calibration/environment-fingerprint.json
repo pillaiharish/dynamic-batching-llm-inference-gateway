@@ -1,0 +1,13 @@
+{
+  "cuda_compatibility": "13.2",
+  "cuda_toolkit": "13.0",
+  "driver": "595.71.05",
+  "gpu": "NVIDIA H100 80GB HBM3",
+  "gpu_memory_mib": 81559,
+  "gpu_uuid": "GPU-32d195bd-0c3b-8ddb-5ee6-d1863f7215e4",
+  "os": "Ubuntu 22.04.5 LTS",
+  "python": "3.12.13",
+  "pytorch": "2.11.0+cu130",
+  "transformers": "5.14.1",
+  "vllm": "0.26.0"
+}

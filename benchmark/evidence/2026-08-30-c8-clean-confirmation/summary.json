@@ -1,0 +1,16 @@
+{
+  "archive_sha256": "646193ac996a2eaff8274a679f970cb10ce12c83aa3ac9485aea0ce30e0a02e8",
+  "attempted": 2700,
+  "c_minus_b": [
+    {"output_tokens_per_second": 17.190, "p95_e2e_ms": -558.900, "repeat": 1, "requests_per_second": 0.177},
+    {"output_tokens_per_second": 17.157, "p95_e2e_ms": -532.499, "repeat": 2, "requests_per_second": 0.177},
+    {"output_tokens_per_second": 10.747, "p95_e2e_ms": -521.163, "repeat": 3, "requests_per_second": 0.115}
+  ],
+  "concurrency": 8,
+  "evidence_confidence": "ARTIFACT_BACKED",
+  "failed": 0,
+  "health_transitions": 0,
+  "repo_sha": "4473e78c41f33f69c0a0860ca6275743201f0324",
+  "status": "DIRECTIONAL_REPLICATION",
+  "success": 2700
+}

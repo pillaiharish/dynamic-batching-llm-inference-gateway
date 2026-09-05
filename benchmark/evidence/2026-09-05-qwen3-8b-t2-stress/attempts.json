@@ -1,0 +1,34 @@
+{
+  "archive_sha256": "d1a1562feeba961f517fe7514d0a3689d1f3eefc826b2279678cf80693a2c496",
+  "attempts": [
+    {
+      "attempted": 64,
+      "failure": 64,
+      "gpu_workload_observed": false,
+      "http_status": 400,
+      "local_prompt_tokens_recorded": 2,
+      "reason": "BatchEncoding field count used instead of input_ids length",
+      "status": "INVALID_WORKLOAD_GENERATOR",
+      "success": 0
+    },
+    {
+      "attempted": 64,
+      "completion_tokens_each": 1024,
+      "failure": 0,
+      "full_length_completions": 64,
+      "health_after": {"A": 200, "B": 200},
+      "idle_b_inference_counters_changed": false,
+      "preemptions": 0,
+      "prompt_tokens_server_max": 1024,
+      "prompt_tokens_server_min": 1024,
+      "status": "CAPACITY_STABILITY_QUALIFIED",
+      "success": 64,
+      "total_completion_tokens": 65536
+    }
+  ],
+  "evidence_confidence": "ARTIFACT_BACKED",
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "performance_evidence": false,
+  "repo_sha": "400d79fae3269a6d3722a44bc9d3e824f78617bc"
+}

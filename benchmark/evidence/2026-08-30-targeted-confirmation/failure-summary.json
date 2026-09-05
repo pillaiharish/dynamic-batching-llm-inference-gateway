@@ -1,0 +1,20 @@
+{
+  "archive_sha256": "9226f34e3cb60e8f9092a3db7d5a9199147fee88e5d4079ca01a96758567b9e7",
+  "attempted": 8100,
+  "evidence_confidence": "ARTIFACT_BACKED",
+  "failed": 25,
+  "failed_coordinate": {
+    "attempted": 300,
+    "concurrency": 8,
+    "error": "no_healthy_backend",
+    "failed": 25,
+    "http_status": 503,
+    "repeat": 1,
+    "success": 275,
+    "target": "gateway_no_batch"
+  },
+  "repo_sha": "4473e78c41f33f69c0a0860ca6275743201f0324",
+  "status": "BENCHMARK_INVALID",
+  "success": 8075,
+  "vllm_remained_running": true
+}
