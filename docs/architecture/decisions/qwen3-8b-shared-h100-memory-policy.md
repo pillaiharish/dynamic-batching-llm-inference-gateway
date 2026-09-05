@@ -6,7 +6,9 @@ Evidence confidence: `ARTIFACT_BACKED`
 Use `Qwen/Qwen3-8B` revision `b968826d9c46dd6066d109eabc6255188de91218`, BF16 weights,
 FP8 KV, TP=1, `max_model_len=4096`, `max_num_seqs=128`,
 `max_num_batched_tokens=8192`, `gpu_memory_utilization=0.44`, and
-`kv_cache_memory_bytes=18,700,000,000` per replica.
+`kv_cache_memory_bytes=18,700,000,000` per replica. Thinking is disabled as part of the serving and
+workload contract; vLLM uses `--default-chat-template-kwargs '{"enable_thinking": false}'`, and local
+token generation passes the equivalent `enable_thinking=False` explicitly.
 
 Automatic KV sizing at 0.44 let two replicas fit but produced unequal capacities. Fixed KV alone
 left vLLM's default 0.92 admission guard active and blocked the second start. The combined policy

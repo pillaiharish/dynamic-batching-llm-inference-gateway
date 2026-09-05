@@ -15,5 +15,11 @@ It records the returned contract ID under ignored `.state/` so `terraform destro
 up Terraform state and that directory together. If creation succeeds but local state is lost, use
 `vastai show instances --raw` and destroy the contract manually.
 
+The offer ID, image, disk size, volume ID/mount path, and on-start command jointly define laboratory
+identity. Changing any of them forces normal destroy-before-create replacement: the old Vast contract
+is released before the new billable instance is created, and the new contract ID replaces the local
+record. `python3 validate_replacement.py` proves that action order offline with a fake adapter; it does
+not contact Vast or create infrastructure.
+
 Model acquisition, verification, and restoration remain Chakra Vault responsibilities. Deployment
 scripts establish the runtime topology, and the benchmark campaign performs measurements.

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -32,6 +33,24 @@ def alive(pid: int) -> bool:
         return False
 
 
+def process_identity(pid: int) -> str:
+    result = subprocess.run(
+        ["ps", "-o", "lstart=", "-o", "command=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    identity = result.stdout.strip()
+    if result.returncode != 0 or not identity:
+        raise ProcessLookupError(pid)
+    return hashlib.sha256(identity.encode()).hexdigest()
+
+
+def verify_identity(record: dict) -> None:
+    if process_identity(record["pid"]) != record.get("identity"):
+        raise RuntimeError("stale/reused PID: process identity does not match lifecycle record")
+
+
 def start(pid_dir: Path, name: str, port: int, command: list[str]) -> None:
     path = record_path(pid_dir, name)
     if not command or not 1 <= port <= 65535:
@@ -44,15 +63,17 @@ def start(pid_dir: Path, name: str, port: int, command: list[str]) -> None:
         command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
     )
     record = {"name": name, "pid": process.pid, "pgid": process.pid, "port": port}
-    path.write_text(json.dumps(record) + "\n")
     time.sleep(0.1)
     if process.poll() is not None:
         raise RuntimeError(f"replica {name} exited during startup; inspect {log.name}")
+    record["identity"] = process_identity(process.pid)
+    path.write_text(json.dumps(record) + "\n")
 
 
 def stop(pid_dir: Path, name: str, timeout: float) -> None:
     path = record_path(pid_dir, name)
     record = json.loads(path.read_text())
+    verify_identity(record)
     if os.getpgid(record["pid"]) != record["pgid"] or record["pgid"] != record["pid"]:
         raise RuntimeError("recorded PID no longer owns the expected process group")
     os.killpg(record["pgid"], signal.SIGTERM)
@@ -66,7 +87,14 @@ def stop(pid_dir: Path, name: str, timeout: float) -> None:
 
 def status(pid_dir: Path, name: str) -> dict:
     record = json.loads(record_path(pid_dir, name).read_text())
-    return {**record, "alive": alive(record["pid"])}
+    pid_alive = alive(record["pid"])
+    identity_matches = pid_alive and process_identity(record["pid"]) == record.get("identity")
+    return {
+        **record,
+        "alive": pid_alive and identity_matches,
+        "identity_matches": identity_matches,
+        "stale_or_reused": pid_alive and not identity_matches,
+    }
 
 
 def main() -> None:

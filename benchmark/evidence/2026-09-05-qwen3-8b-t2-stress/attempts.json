@@ -13,6 +13,7 @@
     },
     {
       "attempted": 64,
+      "chat_template_kwargs": {"enable_thinking": false},
       "completion_tokens_each": 1024,
       "failure": 0,
       "full_length_completions": 64,

@@ -2,8 +2,8 @@ terraform {
   required_version = ">= 1.4"
 }
 
-resource "terraform_data" "h100_lab" {
-  input = {
+locals {
+  lab_identity = {
     disk_gb   = var.disk_gb
     image     = var.image
     mount     = var.volume_mount_path
@@ -11,6 +11,11 @@ resource "terraform_data" "h100_lab" {
     onstart   = var.onstart_command
     volume_id = var.volume_id
   }
+}
+
+resource "terraform_data" "h100_lab" {
+  input            = local.lab_identity
+  triggers_replace = local.lab_identity
 
   lifecycle {
     precondition {

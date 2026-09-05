@@ -20,7 +20,8 @@ not negative H100 capacity evidence.
 ## Attempt 2: corrected qualification
 
 Counting `encoded.input_ids` found 1012 text repetitions produced exactly 1024 templated tokens;
-1013 produced 1025. One request cross-checked local 1024 against server `usage.prompt_tokens=1024`.
+1013 produced 1025. Local and serving chat-template semantics both used `enable_thinking=false`.
+One request cross-checked local 1024 against server `usage.prompt_tokens=1024`.
 The final closed-loop C=64 run requested exactly 1024 input and forced 1024 output tokens with
 `ignore_eos=true`: 64/64 succeeded, all 64 completions were full length, total output was 65,536,
 server prompt min/max was 1024/1024, exit code 0, both health checks were 200, preemptions were zero,

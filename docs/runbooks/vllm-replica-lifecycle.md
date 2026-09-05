@@ -3,6 +3,8 @@
 Launch each replica as its own process group with a stable logical name and port. The helper accepts
 the real command after `--`, for example `python deploy/vllm_replica.py start A 18001 -- vllm serve …`.
 Record the complete non-secret command, model revision, PID/PGID, port, log, and memory policy.
+The lifecycle record also fingerprints process start time and command. Status and stop fail closed if
+that identity no longer matches, preventing a stale/reused PID from signalling an unrelated group.
 
 Before declaring ready, require process alive, correct `/health` and `/v1/models`, metrics reachable,
 expected listener owner, GPU process allocation, and a minimal exact-token request. Stop through
