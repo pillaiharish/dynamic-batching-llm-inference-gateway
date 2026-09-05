@@ -40,6 +40,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+.run/
+infra/vast/.state/
+infra/vast/*.tfvars
 venv/
 dist/
 build/

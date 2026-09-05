@@ -101,6 +101,13 @@ The experiment was produced by gateway and benchmark harness v0.8.0 at
 `c62661e67c94052f8b1269b73852424bec31be61`; this repository milestone advances the project and
 harness to v0.9.0 without rewriting that historical metadata.
 
+The durable engineering record is indexed in [docs/README.md](docs/README.md): see the
+[experiment chronology](docs/experiments/experiment-index.md),
+[curated evidence index](benchmark/evidence/README.md),
+[Vast H100 runbook](docs/runbooks/vast-h100-experiment.md),
+[T0/T1/T2/T3 design](docs/architecture/experiment-topologies.md), and
+[A/B/C claim boundaries](docs/architecture/decisions/benchmark-claim-boundaries.md).
+
 ## Supported Chat Completions subset
 
 `POST /v1/chat/completions` accepts simple text messages with the `system`, `user`, or `assistant`

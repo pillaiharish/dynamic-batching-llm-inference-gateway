@@ -1,0 +1,1 @@
+{"aggregation":false,"gateway_backends":[],"replicas":["A","B"],"routing":"deterministic_round_robin","topology":"T3-A","traffic":["A","B"]}

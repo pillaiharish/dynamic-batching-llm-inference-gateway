@@ -1,0 +1,7 @@
+offer_id                  = 12345678
+image                     = "vastai/pytorch:<PINNED_TAG_OR_DIGEST>"
+disk_gb                   = 100
+volume_id                 = null
+volume_mount_path         = "/workspace"
+onstart_command           = ""
+confirm_billable_resource = false

@@ -1,0 +1,1 @@
+{"aggregation":true,"gateway_backends":["A","B"],"replicas":["A","B"],"topology":"T3-C","traffic":["A","B"]}

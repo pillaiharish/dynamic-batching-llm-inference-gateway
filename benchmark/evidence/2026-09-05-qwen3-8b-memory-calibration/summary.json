@@ -1,0 +1,23 @@
+{
+  "archive_sha256": "ab2cac1819b48778b963dc1df1aa8b6f10a26f5dd09bccde4272a3b69e68572e",
+  "auto_kv": {
+    "first": {"kv_gib": 18.03, "kv_tokens": 262608},
+    "second": {"kv_gib": 18.54, "kv_tokens": 269936}
+  },
+  "evidence_confidence": "ARTIFACT_BACKED",
+  "fixed_kv_only": {
+    "first": {"kv_gib": 17.42, "kv_tokens": 253632, "reported_concurrency_at_4096": 61.92},
+    "second": {"admission_failed": true, "default_gpu_memory_utilization": 0.92}
+  },
+  "model": "Qwen/Qwen3-8B",
+  "model_revision": "b968826d9c46dd6066d109eabc6255188de91218",
+  "policy": {"gpu_memory_utilization": 0.44, "kv_cache_memory_bytes": 18700000000},
+  "repo_sha": "400d79fae3269a6d3722a44bc9d3e824f78617bc",
+  "two_replica_result": {
+    "each_idle_enginecore_mib": 35172,
+    "each_kv_gib": 17.42,
+    "each_kv_tokens": 253632,
+    "startup_order_invariant": true,
+    "total_idle_mib": 70372
+  }
+}
