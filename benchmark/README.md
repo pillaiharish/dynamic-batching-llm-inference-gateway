@@ -329,21 +329,31 @@ export BENCH_GATEWAY_OFF_METRICS_URL='http://127.0.0.1:8081/metrics'
 export BENCH_GATEWAY_ON_BASE_URL='http://127.0.0.1:8082'
 export BENCH_GATEWAY_ON_METRICS_URL='http://127.0.0.1:8082/metrics'
 export BENCH_GATEWAY_AUTH_TOKEN='runtime-only-tenant-key'
-python scripts/run_matrix.py configs/concurrency-sweep.json --dry-run
-python scripts/run_matrix.py configs/concurrency-sweep.json
+python scripts/run_matrix.py configs/concurrency-sweep.json \
+  --matrix-id h100-v1-exploration --dry-run
+python scripts/run_matrix.py configs/concurrency-sweep.json \
+  --matrix-id h100-v1-exploration
 ```
 
-If a matrix process is interrupted, rerun the same configuration and output root with `--resume`.
+If a matrix process is interrupted, rerun the same configuration, output root, and matrix ID with
+`--resume`.
 The runner skips only results whose saved command, run coordinate, and secret-free plan fingerprint
 exactly match the reconstructed plan and whose process and request accounting show a complete,
 valid, failure-free run. The fingerprint includes SHA-256 values for the dataset and referenced
 configuration/environment files, so changing a file in place forces a rerun. Missing, partial,
 malformed, failed, invalid, legacy, or configuration-drifted results run again. Settling delays
 apply only between runs that are actually executed, with no delay before the first remaining run.
+`--resume` never guesses a matrix ID or silently creates a new matrix. A config `run_id` may supply
+the stable identity instead; when `run_id` and `--matrix-id` are both present, they must match.
 
 ```bash
-python scripts/run_matrix.py configs/concurrency-sweep.json --resume
+python scripts/run_matrix.py configs/concurrency-sweep.json \
+  --matrix-id h100-v1-exploration --resume
 ```
+
+An initial non-resume run without either identity still creates a timestamp-named matrix for
+backward compatibility. Resume it by passing that existing output directory name explicitly, for
+example `--matrix-id 20260905T120000Z --resume`.
 
 The example uses independently configured OFF and ON gateway processes so matrix metadata matches
 server state. They must run the same commit and target the same vLLM process; do not run traffic to

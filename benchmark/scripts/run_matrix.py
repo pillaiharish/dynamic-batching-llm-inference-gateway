@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from typing import Any
 import validate_result
 
 BENCHMARK_ROOT = Path(__file__).resolve().parents[1]
+MATRIX_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]+")
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,29 @@ def rotated(targets: list[dict[str, Any]], repeat: int) -> list[dict[str, Any]]:
 def requests_for(config: dict[str, Any], concurrency: int) -> int:
     configured = config.get("requests", "auto")
     return max(200, concurrency * 20) if configured == "auto" else int(configured)
+
+
+def resolve_matrix_id(config_id: Any, cli_id: str | None, resume: bool) -> str:
+    if cli_id is not None and config_id is not None and cli_id != config_id:
+        raise ValueError(f"config run_id {config_id!r} and --matrix-id {cli_id!r} must match")
+    matrix_id = cli_id if cli_id is not None else config_id
+    if matrix_id is None:
+        if resume:
+            raise ValueError(
+                "--resume requires a stable matrix ID; pass --matrix-id <ID> or set config run_id"
+            )
+        matrix_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    if (
+        not isinstance(matrix_id, str)
+        or not MATRIX_ID_PATTERN.fullmatch(matrix_id)
+        or ".." in matrix_id
+        or matrix_id == "."
+    ):
+        raise ValueError(
+            "matrix ID must contain only letters, numbers, '.', '_', or '-', "
+            "and must not contain '..'"
+        )
+    return matrix_id
 
 
 def add_optional(command: list[str], flag_name: str, value: Any) -> None:
@@ -365,8 +390,9 @@ def run_matrix(
     selected: set[str],
     dry_run: bool,
     resume: bool = False,
+    matrix_id: str | None = None,
 ) -> None:
-    matrix_id = config.get("run_id") or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    matrix_id = resolve_matrix_id(config.get("run_id"), matrix_id, resume)
     targets = [
         target for target in config["targets"] if not selected or target["label"] in selected
     ]
@@ -435,6 +461,7 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=BENCHMARK_ROOT / "results")
     parser.add_argument("--target", action="append", default=[], help="run only this label")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--matrix-id", help="stable output directory identity")
     parser.add_argument(
         "--resume",
         action="store_true",
@@ -449,6 +476,7 @@ def main() -> int:
             set(arguments.target),
             arguments.dry_run,
             arguments.resume,
+            arguments.matrix_id,
         )
     except (OSError, ValueError, RuntimeError) as error:
         print(f"run_matrix.py: {error}", file=sys.stderr)
